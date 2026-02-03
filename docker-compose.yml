@@ -1,0 +1,67 @@
+# Docker Compose for Dental IOTN AI Platform
+# Supports NVIDIA GPU for AI inference
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15
+    container_name: dental-iotn-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dental
+      POSTGRES_PASSWORD: dental_secure_password_2024
+      POSTGRES_DB: dental_iotn
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U dental" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend with GPU
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dental-iotn-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://dental:dental_secure_password_2024@db:5432/dental_iotn
+      - SECRET_KEY=your-super-secret-jwt-key-change-in-production
+      - DEBUG=false
+      - DEVICE=cuda
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/models:/app/models
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dental-iotn-frontend
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
