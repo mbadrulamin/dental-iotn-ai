@@ -167,11 +167,19 @@ class ApiClient {
     }
 
     // Admin endpoints
-    async createDataset(name: string, description?: string): Promise<Dataset> {
+    async createDataset(name: string, description?: string, expertIds?: string[]): Promise<Dataset> {
         const response = await this.client.post('/api/admin/datasets', {
             name,
             description,
+            expert_ids: expertIds || [],
             is_validation_set: true,
+        });
+        return response.data;
+    }
+
+    async updateDatasetExperts(datasetId: string, expertIds: string[]): Promise<any> {
+        const response = await this.client.put(`/api/admin/datasets/${datasetId}/experts`, {
+            expert_ids: expertIds
         });
         return response.data;
     }
@@ -225,6 +233,17 @@ class ApiClient {
         const response = await this.client.get('/api/analytics/export/sus-csv', {
             responseType: 'blob',
         });
+        return response.data;
+    }
+
+    // SUS Management
+    async getSUSQuestions(): Promise<Record<string, string>> {
+        const response = await this.client.get('/api/admin/settings/sus');
+        return response.data;
+    }
+
+    async updateSUSQuestions(questions: Record<string, string>): Promise<any> {
+        const response = await this.client.put('/api/admin/settings/sus', questions);
         return response.data;
     }
 }

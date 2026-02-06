@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useAuthStore } from '@/lib/auth';
 
 export default function HomePage() {
-    const { user, isAuthenticated, checkAuth } = useAuthStore();
+    const { user, isAuthenticated, checkAuth, logout } = useAuthStore();
 
     useEffect(() => {
         checkAuth();
@@ -24,22 +24,37 @@ export default function HomePage() {
                         <span style={{ fontSize: '1.5rem' }}>🦷</span>
                         <span style={{ fontSize: '1.25rem', fontWeight: 600 }}>Dental IOTN AI</span>
                     </div>
-                    <nav className="flex gap-4">
+                    <nav className="flex items-center gap-4">
                         {isAuthenticated ? (
                             <>
                                 <Link href="/diagnostic" className="btn btn-secondary" style={{ color: 'white', border: 'none', background: 'transparent' }}>
                                     Diagnostic Tool
                                 </Link>
-                                {user?.role === 'expert' || user?.role === 'admin' ? (
+                                {(user?.role === 'expert' || user?.role === 'admin') && (
                                     <Link href="/expert" className="btn btn-secondary" style={{ color: 'white', border: 'none', background: 'transparent' }}>
                                         Expert Review
                                     </Link>
-                                ) : null}
+                                )}
                                 {user?.role === 'admin' && (
                                     <Link href="/admin" className="btn btn-secondary" style={{ color: 'white', border: 'none', background: 'transparent' }}>
                                         Admin
                                     </Link>
                                 )}
+                                <span style={{ color: 'var(--gray-400)', fontSize: '0.875rem' }}>
+                                    {user?.email}
+                                </span>
+                                <button
+                                    onClick={logout}
+                                    className="btn"
+                                    style={{
+                                        background: 'rgba(255,255,255,0.1)',
+                                        color: 'white',
+                                        border: '1px solid rgba(255,255,255,0.2)',
+                                        padding: '0.5rem 1rem',
+                                    }}
+                                >
+                                    Logout
+                                </button>
                             </>
                         ) : (
                             <>
@@ -79,15 +94,28 @@ export default function HomePage() {
                         }}>
                             Start Diagnostic →
                         </Link>
-                        <Link href="/register" className="btn btn-secondary" style={{
-                            background: 'transparent',
-                            border: '2px solid white',
-                            color: 'white',
-                            padding: '1rem 2rem',
-                            fontSize: '1.1rem',
-                        }}>
-                            Create Account
-                        </Link>
+                        {!isAuthenticated && (
+                            <Link href="/register" className="btn btn-secondary" style={{
+                                background: 'transparent',
+                                border: '2px solid white',
+                                color: 'white',
+                                padding: '1rem 2rem',
+                                fontSize: '1.1rem',
+                            }}>
+                                Create Account
+                            </Link>
+                        )}
+                        {isAuthenticated && user?.role === 'admin' && (
+                            <Link href="/admin" className="btn btn-secondary" style={{
+                                background: 'transparent',
+                                border: '2px solid white',
+                                color: 'white',
+                                padding: '1rem 2rem',
+                                fontSize: '1.1rem',
+                            }}>
+                                Admin Dashboard
+                            </Link>
+                        )}
                     </div>
                 </div>
             </section>
@@ -96,7 +124,7 @@ export default function HomePage() {
             <section style={{ padding: '5rem 0', background: 'var(--gray-50)' }}>
                 <div className="container">
                     <h2 style={{ textAlign: 'center', marginBottom: '3rem' }}>Platform Features</h2>
-                    <div className="grid grid-cols-3 gap-6">
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
                         <div className="card" style={{ textAlign: 'center' }}>
                             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔬</div>
                             <h3 style={{ marginBottom: '0.75rem' }}>AI Classification</h3>
@@ -126,7 +154,7 @@ export default function HomePage() {
             <section style={{ padding: '5rem 0', background: 'white' }}>
                 <div className="container">
                     <h2 style={{ textAlign: 'center', marginBottom: '3rem' }}>IOTN DHC Grades</h2>
-                    <div className="grid grid-cols-5 gap-4">
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
                         {[
                             { grade: 1, title: 'No Need', desc: 'Normal occlusion' },
                             { grade: 2, title: 'Little Need', desc: 'Minor irregularities' },

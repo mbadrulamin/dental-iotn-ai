@@ -16,7 +16,8 @@ from pydantic import BaseModel
 from app.config import get_settings
 from app.database import get_db
 from app.models.user import User, UserRole
-from app.models.dataset import Dataset
+from app.models.sus_questionnaire import SUSQuestionnaire
+from app.models.dataset import Dataset, dataset_experts
 from app.models.image import Image, ImageType
 from app.routers.auth import require_role
 
@@ -288,3 +289,262 @@ async def update_user_role(
         )
     
     return {"message": f"User role updated to {role}"}
+
+
+class AdminUserCreate(BaseModel):
+    """Schema for admin creating a user."""
+    email: str
+    password: str
+    full_name: Optional[str] = None
+    role: str = "guest"
+
+
+@router.post("/users")
+async def create_user_admin(
+    user_data: AdminUserCreate,
+    current_user: Annotated[User, Depends(require_role(UserRole.ADMIN))],
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new user (admin only)."""
+    from app.models.user import User as UserModel
+    from app.services.auth_service import AuthService
+    
+    # Check if email exists
+    result = await db.execute(
+        select(UserModel).where(UserModel.email == user_data.email)
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered",
+        )
+    
+    # Validate role
+    try:
+        role = UserRole(user_data.role)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid role. Must be one of: {', '.join(r.value for r in UserRole)}",
+        )
+    
+    # Create user
+    hashed_password = AuthService.hash_password(user_data.password)
+    new_user = UserModel(
+        email=user_data.email,
+        password_hash=hashed_password,
+        full_name=user_data.full_name,
+        role=role,
+    )
+    db.add(new_user)
+    await db.flush()
+    
+    return {"message": "User created", "id": str(new_user.id)}
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: UUID,
+    current_user: Annotated[User, Depends(require_role(UserRole.ADMIN))],
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a user (admin only)."""
+    from app.models.user import User as UserModel
+    
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete yourself",
+        )
+    
+    result = await db.execute(
+        select(UserModel).where(UserModel.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    
+    await db.delete(user)
+    return {"message": "User deleted"}
+
+
+class DatasetUpdate(BaseModel):
+    """Schema for updating a dataset."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+@router.put("/datasets/{dataset_id}")
+async def update_dataset(
+    dataset_id: UUID,
+    update_data: DatasetUpdate,
+    current_user: Annotated[User, Depends(require_role(UserRole.ADMIN))],
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a dataset."""
+    result = await db.execute(
+        select(Dataset).where(Dataset.id == dataset_id)
+    )
+    dataset = result.scalar_one_or_none()
+    
+    if not dataset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset not found",
+        )
+    
+    if update_data.name is not None:
+        dataset.name = update_data.name
+    if update_data.description is not None:
+        dataset.description = update_data.description
+    
+    return {"message": "Dataset updated"}
+
+
+@router.delete("/images/{image_id}")
+async def delete_image(
+    image_id: UUID,
+    current_user: Annotated[User, Depends(require_role(UserRole.ADMIN))],
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete an image."""
+    result = await db.execute(
+        select(Image).where(Image.id == image_id)
+    )
+    image = result.scalar_one_or_none()
+    
+    if not image:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Image not found",
+        )
+    
+    # Delete file from disk
+    if image.file_path and os.path.exists(image.file_path):
+        try:
+            os.remove(image.file_path)
+        except OSError:
+            pass
+    
+    await db.delete(image)
+    return {"message": "Image deleted"}
+
+
+class DatasetUpdateExperts(BaseModel):
+    """Schema for updating dataset experts."""
+    expert_ids: List[UUID]
+
+@router.put("/datasets/{dataset_id}/experts")
+async def update_dataset_experts(
+    dataset_id: UUID,
+    experts_data: DatasetUpdateExperts,
+    current_user: Annotated[User, Depends(require_role(UserRole.ADMIN))],
+    db: AsyncSession = Depends(get_db),
+):
+    """Assign specific experts to a dataset."""
+    result = await db.execute(
+        select(Dataset).where(Dataset.id == dataset_id)
+    )
+    dataset = result.scalar_one_or_none()
+    
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    
+    # Verify all IDs are valid experts
+    expert_result = await db.execute(
+        select(User).where(User.id.in_(experts_data.expert_ids))
+    )
+    valid_experts = expert_result.scalars().all()
+    
+    if len(valid_experts) != len(experts_data.expert_ids):
+        raise HTTPException(status_code=400, detail="One or more expert IDs are invalid")
+    
+    # Clear existing assignments
+    await db.execute(
+        dataset_experts.delete().where(dataset_experts.c.dataset_id == dataset_id)
+    )
+    
+    # Add new assignments
+    for expert in valid_experts:
+        if expert.role != UserRole.EXPERT:
+            # Optional: Allow admins too? Usually strictly experts for validation.
+            continue 
+        await db.execute(
+            dataset_experts.insert().values(
+                dataset_id=dataset_id,
+                expert_id=expert.id
+            )
+        )
+    
+    await db.commit()
+    return {"message": "Experts assigned successfully"}
+
+# SUS Management Endpoints
+
+@router.get("/settings/sus")
+async def get_sus_questions(
+    current_user: Annotated[User, Depends(require_role(UserRole.ADMIN))],
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get current SUS questionnaire questions.
+    Creates a default set if none exists in the database.
+    """
+    result = await db.execute(select(SUSQuestionnaire).limit(1))
+    config = result.scalar_one_or_none()
+    
+    if config:
+        return config.questions
+    
+    # If config is None (DB is empty), create a default one automatically
+    default_config = SUSQuestionnaire(
+        questions={
+            "q1": "I think that I would like to use this system frequently.",
+            "q2": "I found the system unnecessarily complex.",
+            "q3": "I thought the system was easy to use.",
+            "q4": "I think that I would need the support of a technical person.",
+            "q5": "I found the various functions in this system were well integrated.",
+            "q6": "I thought there was too much inconsistency in this system.",
+            "q7": "I would imagine that most people would learn to use this system very quickly.",
+            "q8": "I found the system very cumbersome to use.",
+            "q9": "I felt very confident using the system.",
+            "q10": "I needed to learn a lot of things before I could get going with this system.",
+        }
+    )
+    
+    db.add(default_config)
+    await db.commit()
+    await db.refresh(default_config)
+    
+    return default_config.questions
+
+@router.put("/settings/sus")
+async def update_sus_questions(
+    questions: dict,
+    current_user: Annotated[User, Depends(require_role(UserRole.ADMIN))],
+    db: AsyncSession = Depends(get_db),
+):
+    """Update SUS questionnaire questions."""
+    # Validate keys q1-q10 exist
+    required_keys = [f"q{i}" for i in range(1, 11)]
+    if not all(k in questions for k in required_keys):
+        raise HTTPException(status_code=400, detail="Missing required questions (q1-q10)")
+    
+    # Get or create config
+    result = await db.execute(select(SUSQuestionnaire).limit(1))
+    config = result.scalar_one_or_none()
+    
+    if config:
+        config.questions = questions
+    else:
+        config = SUSQuestionnaire(questions=questions)
+        db.add(config)
+    
+    await db.commit()
+    return {"message": "SUS questions updated"}
+
+

@@ -29,16 +29,18 @@ async def get_next_image(
     """
     Get the next image for blind review.
     
-    Returns an image that the current expert has not yet reviewed.
+    Now filters by datasets assigned to the expert.
     """
-    # Build query for images not yet reviewed by this expert
+    # Subquery for images already reviewed
     subquery = (
         select(ExpertAssessment.image_id)
         .where(ExpertAssessment.expert_id == current_user.id)
     )
     
+    # Base query for unreviewed images
     query = (
         select(Image)
+        .join(Dataset, Image.dataset_id == Dataset.id)
         .where(
             and_(
                 Image.is_validation_image == True,
@@ -47,9 +49,36 @@ async def get_next_image(
         )
     )
     
-    if dataset_id:
-        query = query.where(Image.dataset_id == dataset_id)
+    # Logic: Admins see everything (unless dataset specified). 
+    # Experts ONLY see datasets assigned to them.
+    if current_user.role == UserRole.EXPERT:
+        # Filter by assigned datasets
+        query = query.where(Dataset.id.in_(
+            select(dataset_experts.c.dataset_id).where(
+                dataset_experts.c.expert_id == current_user.id
+            )
+        ))
     
+    if dataset_id:
+        # If specific dataset requested, ensure user has access
+        if current_user.role == UserRole.EXPERT:
+             # Check if expert is assigned to this specific dataset
+             assignment_check = await db.execute(
+                 select(dataset_experts).where(
+                     and_(
+                         dataset_experts.c.dataset_id == dataset_id,
+                         dataset_experts.c.expert_id == current_user.id
+                     )
+                 )
+             )
+             if not assignment_check.first():
+                 raise HTTPException(status_code=403, detail="Not assigned to this dataset")
+        
+        query = query.where(Image.dataset_id == dataset_id)
+    elif current_user.role == UserRole.EXPERT:
+        # If no dataset specified for expert, just pick from any assigned
+        pass
+        
     query = query.order_by(Image.uploaded_at).limit(1)
     
     result = await db.execute(query)

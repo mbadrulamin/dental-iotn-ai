@@ -6,11 +6,20 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import String, Boolean, DateTime, Text, ForeignKey, Table, Column
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+
+# Association table for Many-to-Many relationship between Dataset and Expert (User)
+dataset_experts = Table(
+    "dataset_experts",
+    Base.metadata,
+    Column("dataset_id", UUID(as_uuid=True), ForeignKey("datasets.id"), primary_key=True),
+    Column("expert_id", UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True),
+)
 
 
 class Dataset(Base):
@@ -55,6 +64,11 @@ class Dataset(Base):
     # Relationships
     created_by_user = relationship("User", back_populates="datasets")
     images = relationship("Image", back_populates="dataset")
+    assigned_experts = relationship(
+        "User",
+        secondary=dataset_experts,
+        backref="assigned_datasets"
+    )
     
     def __repr__(self) -> str:
         return f"<Dataset {self.name}>"

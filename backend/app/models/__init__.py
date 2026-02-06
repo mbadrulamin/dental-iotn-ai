@@ -9,6 +9,7 @@ from app.models.measurement import ClinicalMeasurement
 from app.models.inference import AIInference
 from app.models.assessment import ExpertAssessment
 from app.models.sus_response import SUSResponse
+from app.models.sus_questionnaire import SUSQuestionnaire
 
 __all__ = [
     "User",
@@ -18,4 +19,5 @@ __all__ = [
     "AIInference",
     "ExpertAssessment",
     "SUSResponse",
+    "SUSQuestionnaire",
 ]

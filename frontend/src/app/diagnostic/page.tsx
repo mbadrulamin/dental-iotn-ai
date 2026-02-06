@@ -5,8 +5,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { api } from '@/lib/api';
 import type { DiagnosticResponse, MeasurementInput } from '@/types';
+import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/lib/auth';
 
 export default function DiagnosticPage() {
+    const router = useRouter();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [preview, setPreview] = useState<string | null>(null);
@@ -14,6 +17,7 @@ export default function DiagnosticPage() {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [result, setResult] = useState<DiagnosticResponse | null>(null);
     const [error, setError] = useState('');
+    const { user, isAuthenticated, logout } = useAuthStore();
 
     // Measurement toggles
     const [showSegmentation, setShowSegmentation] = useState(true);
@@ -68,16 +72,43 @@ export default function DiagnosticPage() {
         <div style={{ minHeight: '100vh', background: 'var(--gray-50)' }}>
             {/* Header */}
             <header style={{
-                background: 'white',
-                borderBottom: '1px solid var(--gray-200)',
+                background: 'var(--gray-900)',
+                color: 'white',
                 padding: '1rem 0',
             }}>
                 <div className="container flex justify-between items-center">
-                    <Link href="/" className="flex items-center gap-2">
-                        <span style={{ fontSize: '1.5rem' }}>🦷</span>
-                        <span style={{ fontWeight: 600 }}>Dental IOTN AI</span>
-                    </Link>
-                    <span className="badge badge-info">Diagnostic Tool</span>
+                    <div className="flex items-center gap-3">
+                        <Link href="/" style={{ color: 'white' }}>
+                            <span style={{ fontSize: '1.5rem' }}>🦷</span>
+                        </Link>
+                        <span style={{ fontWeight: 600 }}>Diagnostic Tool</span>
+                    </div>
+                    <nav className="flex items-center gap-4">
+                        {isAuthenticated && user ? (
+                            <>
+                                <span style={{ color: 'var(--gray-400)', fontSize: '0.875rem' }}>
+                                    {user.email}
+                                </span>
+                                <button
+                                    onClick={() => {
+                                        logout();
+                                        router.push('/');
+                                    }}
+                                    className="btn"
+                                    style={{
+                                        background: 'rgba(255,255,255,0.1)',
+                                        color: 'white',
+                                        border: '1px solid rgba(255,255,255,0.2)',
+                                        padding: '0.5rem 1rem',
+                                    }}
+                                >
+                                    Logout
+                                </button>
+                            </>
+                        ) : (
+                            <Link href="/login" style={{ color: 'white' }}>Login</Link>
+                        )}
+                    </nav>
                 </div>
             </header>
 
