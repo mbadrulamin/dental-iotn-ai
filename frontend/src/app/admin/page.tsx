@@ -1,842 +1,725 @@
-'use client';
+"use client"
 
-import { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
-import { api } from '@/lib/api';
-import { useAuthStore } from '@/lib/auth';
-import type { Dataset, PerformanceMetrics, KappaResult } from '@/types';
-
-interface UserItem {
-    id: string;
-    email: string;
-    full_name: string | null;
-    role: string;
-    is_active: boolean;
-    created_at: string;
-}
-
-interface DatasetImage {
-    id: string;
-    filename: string;
-    image_url: string;
-    image_type: string | null;
-    is_processed: boolean;
-    uploaded_at: string;
-}
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { useState, useEffect } from "react"
+import { api } from "@/lib/api"
+import { useAuthStore } from "@/lib/auth"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Trash2, Plus, Settings, FileText, BarChart3, Users, ArrowLeft, Upload, CheckCircle, UserPlus, Shield } from "lucide-react"
+import Swal from "sweetalert2"
 
 export default function AdminPage() {
-    const { user, isAuthenticated, checkAuth, logout } = useAuthStore();
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const { user, isAuthenticated, checkAuth } = useAuthStore()
 
-    const [activeTab, setActiveTab] = useState<'datasets' | 'analytics' | 'users' | 'sus'>('datasets');
-    const [datasets, setDatasets] = useState<Dataset[]>([]);
-    const [metrics, setMetrics] = useState<PerformanceMetrics[]>([]);
-    const [kappa, setKappa] = useState<KappaResult[]>([]);
-    const [users, setUsers] = useState<UserItem[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
+    // Navigation & Data
+    const [activeTab, setActiveTab] = useState<"datasets" | "analytics" | "users" | "sus">("datasets")
+    const [datasets, setDatasets] = useState<any[]>([])
+    const [metrics, setMetrics] = useState<any[]>([])
+    const [users, setUsers] = useState<any[]>([])
+    const [expertUsers, setExpertUsers] = useState<any[]>([]) // For assignment
+    const [isLoading, setIsLoading] = useState(false)
 
-    // Dataset form state
-    const [newDatasetName, setNewDatasetName] = useState('');
-    const [newDatasetDescription, setNewDatasetDescription] = useState('');
-    const [selectedDataset, setSelectedDataset] = useState<string | null>(null);
+    // Dataset State
+    const [viewingDataset, setViewingDataset] = useState<any>(null) // Object if viewing details
+    const [datasetImages, setDatasetImages] = useState<any[]>([])
+    const [editDatasetModal, setEditDatasetModal] = useState(false)
+    const [editName, setEditName] = useState("")
+    const [editDesc, setEditDesc] = useState("")
 
-    // Dataset detail view
-    const [viewingDataset, setViewingDataset] = useState<Dataset | null>(null);
-    const [datasetImages, setDatasetImages] = useState<DatasetImage[]>([]);
-    const [editingDataset, setEditingDataset] = useState<Dataset | null>(null);
-    const [editName, setEditName] = useState('');
-    const [editDescription, setEditDescription] = useState('');
+    // Assignment State
+    const [assignModal, setAssignModal] = useState(false)
+    const [selectedExperts, setSelectedExperts] = useState<string[]>([])
 
-    // User management
-    const [showAddUser, setShowAddUser] = useState(false);
-    const [newUserEmail, setNewUserEmail] = useState('');
-    const [newUserPassword, setNewUserPassword] = useState('');
-    const [newUserName, setNewUserName] = useState('');
-    const [newUserRole, setNewUserRole] = useState('guest');
+    // User Management State
+    const [showAddUser, setShowAddUser] = useState(false)
+    const [newUserEmail, setNewUserEmail] = useState("")
+    const [newUserPassword, setNewUserPassword] = useState("")
+    const [newUserName, setNewUserName] = useState("")
+    const [newUserRole, setNewUserRole] = useState("guest")
 
-    // Add state for SUS questions
-    const [susQuestions, setSusQuestions] = useState<Record<string, string>>({});
-    const [editingSus, setEditingSus] = useState(false);
+    // SUS State
+    const [susQuestions, setSusQuestions] = useState<Record<string, string>>({})
 
-    // Add state for available experts (for the dropdown)
-    const [experts, setExperts] = useState<any[]>([]);
-
-    // Add state for selected experts (for the dropdown)
-    const [selectedExperts, setSelectedExperts] = useState<string[]>([]);
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
     useEffect(() => {
-        checkAuth();
-    }, [checkAuth]);
-
-    useEffect(() => {
-        if (isAuthenticated && user?.role === 'admin') {
-            loadData();
-            loadExperts();
-            loadSUSQuestions();
-        }
-    }, [isAuthenticated, user]);
+        checkAuth()
+    }, [checkAuth])
 
     const loadData = async () => {
-        setIsLoading(true);
-        setError('');
+        setIsLoading(true)
         try {
-            const [datasetsData, metricsData, kappaData] = await Promise.all([
+            const [datasetsData, metricsData, usersData] = await Promise.all([
                 api.getDatasets().catch(() => []),
                 api.getPerformanceMetrics().catch(() => []),
-                api.getKappaResults().catch(() => []),
-            ]);
-            setDatasets(datasetsData);
-            setMetrics(metricsData);
-            setKappa(kappaData);
-        } catch (err) {
-            console.error('Failed to load data', err);
-            setError('Failed to load data');
+                fetch(`${API_URL}/api/admin/users`, {
+                    headers: { "Authorization": `Bearer ${localStorage.getItem("access_token")}` },
+                }).then(res => res.json()).catch(() => []),
+            ])
+            setDatasets(datasetsData)
+            setMetrics(metricsData)
+            setUsers(usersData)
+
+            // Filter experts
+            setExpertUsers(usersData.filter((u: any) => u.role === 'expert'))
+
+            try {
+                const qs = await api.getSUSQuestions()
+                setSusQuestions(qs)
+            } catch (e) { console.error(e) }
+        } catch (err: any) {
+            Swal.fire('Error', 'Failed to load data', 'error')
         } finally {
-            setIsLoading(false);
+            setIsLoading(false)
         }
-    };
-
-    const loadUsers = async () => {
-        try {
-            const response = await fetch(`${API_URL}/api/admin/users`, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` },
-            });
-            if (response.ok) {
-                setUsers(await response.json());
-            }
-        } catch (err) {
-            console.error('Failed to load users', err);
-        }
-    };
-
-    const loadExperts = async () => {
-        try {
-            // You might need a GET /users endpoint or filter locally if you already have them
-            // Assuming you load all users in users tab, let's just fetch users with role expert
-            // Reusing the user list from the users tab logic or a new fetch
-            const response = await fetch(`${API_URL}/api/admin/users`, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` },
-            });
-            if (response.ok) {
-                const allUsers = await response.json();
-                setExperts(allUsers.filter((u: any) => u.role === 'expert'));
-            }
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
-    const loadSUSQuestions = async () => {
-        try {
-            const qs = await api.getSUSQuestions();
-            setSusQuestions(qs);
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
-    const loadDatasetImages = async (datasetId: string) => {
-        try {
-            const response = await fetch(`${API_URL}/api/admin/datasets/${datasetId}/images`, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` },
-            });
-            if (response.ok) {
-                const data = await response.json();
-                setDatasetImages(data.images || []);
-            }
-        } catch (err) {
-            console.error('Failed to load images', err);
-        }
-    };
+    }
 
     useEffect(() => {
-        if (activeTab === 'users' && isAuthenticated && user?.role === 'admin') {
-            loadUsers();
+        if (isAuthenticated && user?.role === "admin") {
+            loadData()
         }
-    }, [activeTab, isAuthenticated, user]);
+    }, [isAuthenticated, user])
 
-
-    const handleUpdateSUS = async () => {
-        try {
-            await api.updateSUSQuestions(susQuestions);
-            setSuccess('SUS Questions updated!');
-            setEditingSus(false);
-        } catch (err) {
-            setError('Failed to update SUS');
-        }
-    };
+    // --- DATASET ACTIONS ---
 
     const handleCreateDataset = async () => {
-        if (!newDatasetName.trim()) return;
-        setError('');
-        setSuccess('');
-
-        try {
-            await api.createDataset(newDatasetName.trim(), newDatasetDescription.trim() || undefined, selectedExperts);
-            setNewDatasetName('');
-            setNewDatasetDescription('');
-            setSuccess('Dataset created successfully!');
-            loadData();
-        } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to create dataset');
-        }
-    };
-
-    const handleUploadImages = async (files: FileList) => {
-        if (!selectedDataset || !files.length) return;
-        setError('');
-        setSuccess('');
-
-        try {
-            const result = await api.uploadImages(selectedDataset, files);
-            setSuccess(`Uploaded ${result.uploaded} images successfully!`);
-            loadData();
-            if (viewingDataset) {
-                loadDatasetImages(viewingDataset.id);
+        const { value: name } = await Swal.fire({
+            title: 'Create Dataset',
+            input: 'text',
+            inputLabel: 'Dataset Name',
+            inputPlaceholder: 'Enter name',
+            showCancelButton: true,
+            inputValidator: (value) => {
+                if (!value) return 'You need to write something!'
+                return null
             }
-        } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to upload images');
+        })
+
+        if (name) {
+            try {
+                await api.createDataset(name, "")
+                Swal.fire('Success', 'Dataset created', 'success')
+                loadData()
+            } catch (err: any) {
+                Swal.fire('Error', err.response?.data?.detail || 'Failed', 'error')
+            }
         }
-    };
+    }
 
-    const handleDeleteDataset = async (datasetId: string) => {
-        if (!confirm('Are you sure you want to delete this dataset?')) return;
+    const openDataset = async (dataset: any) => {
+        setViewingDataset(dataset)
+        setEditName(dataset.name)
+        setEditDesc(dataset.description || "")
 
+        // Fetch Images
         try {
-            const response = await fetch(`${API_URL}/api/admin/datasets/${datasetId}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` },
-            });
-            if (response.ok) {
-                setSuccess('Dataset deleted');
-                setViewingDataset(null);
-                loadData();
-            } else {
-                setError('Failed to delete dataset');
+            const res = await fetch(`${API_URL}/api/admin/datasets/${dataset.id}/images`, {
+                headers: { "Authorization": `Bearer ${localStorage.getItem("access_token")}` },
+            })
+            if (res.ok) {
+                const data = await res.json()
+                setDatasetImages(data.images || [])
             }
         } catch (err) {
-            setError('Failed to delete dataset');
+            console.error("Failed to load images", err)
         }
-    };
+
+        // NEW: Fetch Assigned Experts
+        try {
+            const expRes = await fetch(`${API_URL}/api/admin/datasets/${dataset.id}/experts`, {
+                headers: { "Authorization": `Bearer ${localStorage.getItem("access_token")}` },
+            })
+            if (expRes.ok) {
+                const assignedIds = await expRes.json()
+                setSelectedExperts(assignedIds || [])
+            }
+        } catch (err) {
+            console.error("Failed to load experts", err)
+        }
+    }
 
     const handleUpdateDataset = async () => {
-        if (!editingDataset) return;
-
         try {
-            const response = await fetch(`${API_URL}/api/admin/datasets/${editingDataset.id}`, {
-                method: 'PUT',
+            const res = await fetch(`${API_URL}/api/admin/datasets/${viewingDataset.id}`, {
+                method: "PUT",
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-                    'Content-Type': 'application/json',
+                    "Authorization": `Bearer ${localStorage.getItem("access_token")}`,
+                    "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ name: editName, description: editDescription }),
-            });
-            if (response.ok) {
-                setSuccess('Dataset updated');
-                setEditingDataset(null);
-                loadData();
+                body: JSON.stringify({ name: editName, description: editDesc }),
+            })
+            if (res.ok) {
+                Swal.fire('Saved', 'Dataset updated', 'success')
+                setEditDatasetModal(false)
+                // Update local state to avoid reload
+                setViewingDataset({ ...viewingDataset, name: editName, description: editDesc })
+                loadData() // Refresh list
             } else {
-                setError('Failed to update dataset');
+                Swal.fire('Error', 'Update failed', 'error')
             }
         } catch (err) {
-            setError('Failed to update dataset');
+            Swal.fire('Error', 'Failed', 'error')
         }
-    };
+    }
+
+    const handleDeleteDataset = async () => {
+        const result = await Swal.fire({
+            title: 'Are you sure?',
+            text: "You won't be able to revert this!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            confirmButtonText: 'Yes, delete it!'
+        })
+
+        if (result.isConfirmed) {
+            try {
+                await fetch(`${API_URL}/api/admin/datasets/${viewingDataset.id}`, {
+                    method: "DELETE",
+                    headers: { "Authorization": `Bearer ${localStorage.getItem("access_token")}` },
+                })
+                Swal.fire('Deleted!', 'Dataset has been deleted.', 'success')
+                setViewingDataset(null)
+                loadData()
+            } catch (err) {
+                Swal.fire('Error', 'Failed to delete', 'error')
+            }
+        }
+    }
+
+    const handleUploadImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0) return
+
+        try {
+            await api.uploadImages(viewingDataset.id, e.target.files)
+            Swal.fire('Uploaded', 'Images added successfully', 'success')
+            openDataset(viewingDataset) // Reload images
+            loadData() // Update counts
+        } catch (err) {
+            Swal.fire('Error', 'Upload failed', 'error')
+        }
+    }
 
     const handleDeleteImage = async (imageId: string) => {
-        if (!confirm('Delete this image?')) return;
+        const result = await Swal.fire({
+            title: 'Delete Image?',
+            icon: 'question',
+            showCancelButton: true,
+        })
 
-        try {
-            const response = await fetch(`${API_URL}/api/admin/images/${imageId}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` },
-            });
-            if (response.ok) {
-                setSuccess('Image deleted');
-                if (viewingDataset) {
-                    loadDatasetImages(viewingDataset.id);
-                    loadData();
-                }
-            } else {
-                setError('Failed to delete image');
+        if (result.isConfirmed) {
+            try {
+                await fetch(`${API_URL}/api/admin/images/${imageId}`, {
+                    method: "DELETE",
+                    headers: { "Authorization": `Bearer ${localStorage.getItem("access_token")}` },
+                })
+                Swal.fire('Deleted', '', 'success')
+                openDataset(viewingDataset) // Refresh
+                loadData()
+            } catch (err) {
+                Swal.fire('Error', 'Failed', 'error')
             }
-        } catch (err) {
-            setError('Failed to delete image');
         }
-    };
+    }
 
-    const handleExportCSV = async (type: 'validation' | 'sus') => {
-        setError('');
+    // --- EXPERT ASSIGNMENT ACTIONS ---
+
+    const openAssignModal = () => {
+        setAssignModal(true)
+    }
+
+    const handleSaveAssignments = async () => {
         try {
-            let blob: Blob;
-            let filename: string;
-
-            if (type === 'validation') {
-                blob = await api.downloadValidationCSV();
-                filename = 'validation_data.csv';
-            } else {
-                blob = await api.downloadSUSCSV();
-                filename = 'sus_scores.csv';
-            }
-
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
-            window.URL.revokeObjectURL(url);
-            setSuccess(`${filename} downloaded!`);
+            await fetch(`${API_URL}/api/admin/datasets/${viewingDataset.id}/experts`, {
+                method: "PUT",
+                headers: {
+                    "Authorization": `Bearer ${localStorage.getItem("access_token")}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ expert_ids: selectedExperts }),
+            })
+            Swal.fire('Success', 'Experts assigned', 'success')
+            setAssignModal(false)
         } catch (err) {
-            setError('Export failed');
+            Swal.fire('Error', 'Assignment failed', 'error')
         }
-    };
+    }
+
+    // --- USER MANAGEMENT ACTIONS ---
 
     const handleAddUser = async () => {
         if (!newUserEmail || !newUserPassword) {
-            setError('Email and password required');
-            return;
+            Swal.fire('Validation', 'Email and password required', 'warning')
+            return
         }
-
         try {
-            const response = await fetch(`${API_URL}/api/admin/users`, {
-                method: 'POST',
+            const res = await fetch(`${API_URL}/api/admin/users`, {
+                method: "POST",
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-                    'Content-Type': 'application/json',
+                    "Authorization": `Bearer ${localStorage.getItem("access_token")}`,
+                    "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
                     email: newUserEmail,
                     password: newUserPassword,
-                    full_name: newUserName || undefined,
+                    full_name: newUserName,
                     role: newUserRole,
                 }),
-            });
-            if (response.ok) {
-                setSuccess('User created');
-                setShowAddUser(false);
-                setNewUserEmail('');
-                setNewUserPassword('');
-                setNewUserName('');
-                setNewUserRole('guest');
-                loadUsers();
+            })
+            if (res.ok) {
+                Swal.fire('Success', 'User created', 'success')
+                setShowAddUser(false)
+                setNewUserEmail("")
+                setNewUserPassword("")
+                setNewUserName("")
+                loadData()
             } else {
-                const data = await response.json();
-                setError(data.detail || 'Failed to create user');
+                const data = await res.json()
+                Swal.fire('Error', data.detail || 'Failed', 'error')
             }
         } catch (err) {
-            setError('Failed to create user');
+            Swal.fire('Error', 'Failed', 'error')
         }
-    };
+    }
+
+    const handleDeleteUser = async (userId: string) => {
+        const result = await Swal.fire({
+            title: 'Delete User?',
+            text: 'This action cannot be undone.',
+            icon: 'warning',
+            showCancelButton: true,
+        })
+
+        if (result.isConfirmed) {
+            try {
+                const res = await fetch(`${API_URL}/api/admin/users/${userId}`, {
+                    method: "DELETE",
+                    headers: { "Authorization": `Bearer ${localStorage.getItem("access_token")}` },
+                })
+                if (res.ok) {
+                    Swal.fire('Deleted', 'User removed', 'success')
+                    loadData()
+                } else {
+                    Swal.fire('Error', 'Failed', 'error')
+                }
+            } catch (err) {
+                Swal.fire('Error', 'Failed', 'error')
+            }
+        }
+    }
 
     const handleUpdateUserRole = async (userId: string, newRole: string) => {
         try {
-            const response = await fetch(`${API_URL}/api/admin/users/${userId}/role?role=${newRole}`, {
-                method: 'PUT',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` },
-            });
-            if (response.ok) {
-                setSuccess('Role updated');
-                loadUsers();
-            } else {
-                setError('Failed to update role');
-            }
+            const res = await fetch(`${API_URL}/api/admin/users/${userId}/role?role=${newRole}`, {
+                method: "PUT",
+                headers: { "Authorization": `Bearer ${localStorage.getItem("access_token")}` },
+            })
+            if (!res.ok) throw new Error("Failed")
         } catch (err) {
-            setError('Failed to update role');
+            Swal.fire('Error', 'Could not update role', 'error')
         }
-    };
-
-    const handleDeleteUser = async (userId: string) => {
-        if (!confirm('Are you sure you want to delete this user?')) return;
-
-        try {
-            const response = await fetch(`${API_URL}/api/admin/users/${userId}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` },
-            });
-            if (response.ok) {
-                setSuccess('User deleted');
-                loadUsers();
-            } else {
-                setError('Failed to delete user');
-            }
-        } catch (err) {
-            setError('Failed to delete user');
-        }
-    };
-
-
-    if (!isAuthenticated || user?.role !== 'admin') {
-        return (
-            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gray-50)' }}>
-                <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔐</div>
-                    <h2>Admin Access Required</h2>
-                    <p className="text-muted" style={{ marginBottom: '1.5rem' }}>Only administrators can access this panel.</p>
-                    <Link href="/login" className="btn btn-primary">Login</Link>
-                </div>
-            </div>
-        );
     }
 
-    // Dataset detail view
-    if (viewingDataset) {
+    // --- RENDER ---
+
+    if (!isAuthenticated || user?.role !== "admin") {
         return (
-            <div style={{ minHeight: '100vh', background: 'var(--gray-100)' }}>
-                <header style={{ background: 'var(--gray-900)', color: 'white', padding: '1rem 0' }}>
-                    <div className="container flex justify-between items-center">
-                        <div className="flex items-center gap-4">
-                            <button onClick={() => setViewingDataset(null)} style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}>
-                                ← Back
-                            </button>
-                            <span style={{ fontWeight: 600 }}>Dataset: {viewingDataset.name}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => { setSelectedDataset(viewingDataset.id); fileInputRef.current?.click(); }}
-                                className="btn btn-primary"
-                                style={{ padding: '0.5rem 1rem' }}
-                            >
-                                Upload Images
-                            </button>
-                            <button
-                                onClick={() => { setEditingDataset(viewingDataset); setEditName(viewingDataset.name); setEditDescription(viewingDataset.description || ''); }}
-                                className="btn btn-secondary"
-                                style={{ padding: '0.5rem 1rem' }}
-                            >
-                                Edit
-                            </button>
-                            <button
-                                onClick={() => handleDeleteDataset(viewingDataset.id)}
-                                className="btn"
-                                style={{ padding: '0.5rem 1rem', background: '#991b1b', color: 'white' }}
-                            >
-                                Delete
-                            </button>
-                        </div>
-                    </div>
-                </header>
-
-                {(error || success) && (
-                    <div className="container" style={{ padding: '1rem 1.5rem 0' }}>
-                        {error && <div style={{ background: '#fee2e2', color: '#991b1b', padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '0.5rem' }}>{error}</div>}
-                        {success && <div style={{ background: '#d1fae5', color: '#065f46', padding: '0.75rem 1rem', borderRadius: '8px' }}>{success}</div>}
-                    </div>
-                )}
-
-                <main className="container" style={{ padding: '2rem 1.5rem' }}>
-                    {viewingDataset.description && (
-                        <p className="text-muted" style={{ marginBottom: '1.5rem' }}>{viewingDataset.description}</p>
-                    )}
-
-                    <h3 style={{ marginBottom: '1rem' }}>Images ({datasetImages.length})</h3>
-
-                    {datasetImages.length === 0 ? (
-                        <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
-                            <p className="text-muted">No images in this dataset. Upload some above.</p>
-                        </div>
-                    ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-                            {datasetImages.map(img => (
-                                <div key={img.id} className="card" style={{ padding: '0.5rem', position: 'relative' }}>
-                                    <img
-                                        src={`${API_URL}${img.image_url}`}
-                                        alt={img.filename}
-                                        style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '4px' }}
-                                    />
-                                    <div style={{ padding: '0.5rem' }}>
-                                        <p style={{ fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            {img.filename}
-                                        </p>
-                                        <p className="text-muted" style={{ fontSize: '0.7rem' }}>
-                                            {img.image_type || 'Unknown type'}
-                                        </p>
-                                    </div>
-                                    <button
-                                        onClick={() => handleDeleteImage(img.id)}
-                                        style={{
-                                            position: 'absolute', top: '0.75rem', right: '0.75rem',
-                                            background: 'rgba(0,0,0,0.6)', color: 'white', border: 'none',
-                                            width: '24px', height: '24px', borderRadius: '50%', cursor: 'pointer',
-                                            fontSize: '0.75rem',
-                                        }}
-                                    >
-                                        ×
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </main>
-
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    onChange={(e) => e.target.files && handleUploadImages(e.target.files)}
-                    style={{ display: 'none' }}
-                />
-
-                {/* Edit Dataset Modal */}
-                {editingDataset && (
-                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-                        <div className="card" style={{ padding: '2rem', width: '400px' }}>
-                            <h3 style={{ marginBottom: '1rem' }}>Edit Dataset</h3>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className="label">Name</label>
-                                <input type="text" className="input" value={editName} onChange={(e) => setEditName(e.target.value)} />
-                            </div>
-                            <div style={{ marginBottom: '1.5rem' }}>
-                                <label className="label">Description</label>
-                                <textarea className="input" rows={3} value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
-                            </div>
-                            <div className="flex gap-2">
-                                <button onClick={handleUpdateDataset} className="btn btn-primary" style={{ flex: 1 }}>Save</button>
-                                <button onClick={() => setEditingDataset(null)} className="btn btn-secondary" style={{ flex: 1 }}>Cancel</button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+            <div className="flex h-screen w-full items-center justify-center bg-background">
+                <Card>
+                    <CardContent className="pt-6 text-center">
+                        <h2 className="text-xl font-bold">Access Denied</h2>
+                        <p className="text-muted-foreground">Admin access required.</p>
+                        <Button asChild className="mt-4">
+                            <a href="/login">Login</a>
+                        </Button>
+                    </CardContent>
+                </Card>
             </div>
-        );
+        )
     }
 
     return (
-        <div style={{ minHeight: '100vh', background: 'var(--gray-100)' }}>
-            {/* Header */}
-            <header style={{ background: 'var(--gray-900)', color: 'white', padding: '1rem 0' }}>
-                <div className="container flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                        <Link href="/" style={{ color: 'white' }}>
-                            <span style={{ fontSize: '1.5rem' }}>🦷</span>
-                        </Link>
-                        <span style={{ fontWeight: 600 }}>Admin Dashboard</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <span className="badge badge-warning">Admin</span>
-                        <button onClick={logout} className="btn" style={{ background: 'transparent', color: 'var(--gray-400)', border: 'none', padding: '0.5rem 1rem' }}>
-                            Logout
-                        </button>
-                    </div>
-                </div>
-            </header>
-
-            {/* Tabs */}
-            <div style={{ background: 'white', borderBottom: '1px solid var(--gray-200)' }}>
-                <div className="container flex gap-1" style={{ padding: '0 1.5rem' }}>
-                    {[
-                        { id: 'datasets', label: '📁 Datasets' },
-                        { id: 'analytics', label: '📊 Analytics' },
-                        { id: 'users', label: '👥 Users' },
-                        { id: 'sus', label: '📝 SUS Settings' },
-                    ].map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id as any)}
-                            className="btn"
-                            style={{
-                                background: activeTab === tab.id ? 'var(--primary-50)' : 'transparent',
-                                color: activeTab === tab.id ? 'var(--primary-700)' : 'var(--gray-600)',
-                                border: 'none', borderRadius: 0,
-                                borderBottom: activeTab === tab.id ? '2px solid var(--primary-500)' : '2px solid transparent',
-                                padding: '1rem 1.5rem',
-                            }}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
+        <div className="container py-8">
+            <div className="flex items-center justify-between mb-8">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
+                    <p className="text-muted-foreground">Manage datasets, users, and settings.</p>
                 </div>
             </div>
 
-            {/* Messages */}
-            {(error || success) && (
-                <div className="container" style={{ padding: '1rem 1.5rem 0' }}>
-                    {error && <div style={{ background: '#fee2e2', color: '#991b1b', padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '0.5rem' }}>{error}</div>}
-                    {success && <div style={{ background: '#d1fae5', color: '#065f46', padding: '0.75rem 1rem', borderRadius: '8px' }}>{success}</div>}
-                </div>
-            )}
+            <Tabs defaultValue="datasets" onValueChange={(v) => {
+                setActiveTab(v as any)
+                setViewingDataset(null) // Reset detail view when switching tabs
+            }}>
+                <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
+                    <TabsTrigger value="datasets" className="flex gap-2">
+                        <FileText className="h-4 w-4" /> Datasets
+                    </TabsTrigger>
+                    <TabsTrigger value="analytics" className="flex gap-2">
+                        <BarChart3 className="h-4 w-4" /> Analytics
+                    </TabsTrigger>
+                    <TabsTrigger value="users" className="flex gap-2">
+                        <Users className="h-4 w-4" /> Users
+                    </TabsTrigger>
+                    <TabsTrigger value="sus" className="flex gap-2">
+                        <Settings className="h-4 w-4" /> SUS
+                    </TabsTrigger>
+                </TabsList>
 
-            <main className="container" style={{ padding: '2rem 1.5rem' }}>
-                {/* DATASETS TAB */}
-                {activeTab === 'datasets' && (
-                    <div>
-                        <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-                            <h3 style={{ marginBottom: '1rem' }}>Create New Dataset</h3>
-                            <div className="flex gap-3">
-                                <input type="text" className="input" placeholder="Dataset name..." value={newDatasetName} onChange={(e) => setNewDatasetName(e.target.value)} style={{ flex: 1 }} />
-                                <input type="text" className="input" placeholder="Description (optional)..." value={newDatasetDescription} onChange={(e) => setNewDatasetDescription(e.target.value)} style={{ flex: 2 }} />
-                                <button onClick={handleCreateDataset} className="btn btn-primary">Create</button>
+                {/* --- DATASETS TAB --- */}
+                <TabsContent value="datasets" className="space-y-6">
+                    {!viewingDataset ? (
+                        // LIST VIEW
+                        <div className="space-y-4">
+                            <div className="flex justify-end">
+                                <Button onClick={handleCreateDataset}><Plus className="mr-2 h-4 w-4" /> Create Dataset</Button>
                             </div>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className="label">Assign Experts</label>
-                                <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid var(--gray-300)', borderRadius: 'var(--radius-md)', padding: '0.5rem' }}>
-                                    {experts.length === 0 && <p className="text-sm text-muted">No experts found.</p>}
-                                    {experts.map(expert => (
-                                        <label key={expert.id} style={{ display: 'block', marginBottom: '0.5rem', cursor: 'pointer' }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedExperts.includes(expert.id)}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setSelectedExperts([...selectedExperts, expert.id]);
-                                                    } else {
-                                                        setSelectedExperts(selectedExperts.filter(id => id !== expert.id));
-                                                    }
-                                                }}
-                                                style={{ marginRight: '0.5rem' }}
-                                            />
-                                            {expert.email} {expert.full_name && `(${expert.full_name})`}
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-
-                        {isLoading ? (
-                            <div style={{ textAlign: 'center', padding: '2rem' }}>Loading...</div>
-                        ) : datasets.length === 0 ? (
-                            <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-                                <p className="text-muted">No datasets yet. Create one above.</p>
-                            </div>
-                        ) : (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-                                {datasets.map(dataset => (
-                                    <div key={dataset.id} className="card" style={{ padding: '1.5rem' }}>
-                                        <h4>{dataset.name}</h4>
-                                        {dataset.description && <p className="text-sm text-muted" style={{ marginTop: '0.25rem' }}>{dataset.description}</p>}
-                                        <p className="text-sm" style={{ marginTop: '0.5rem', fontWeight: 500 }}>📷 {dataset.image_count} images</p>
-                                        <div className="flex gap-2" style={{ marginTop: '1rem' }}>
-                                            <button
-                                                onClick={() => { setViewingDataset(dataset); loadDatasetImages(dataset.id); }}
-                                                className="btn btn-primary"
-                                                style={{ flex: 1, padding: '0.5rem' }}
-                                            >
-                                                View
-                                            </button>
-                                            <button
-                                                onClick={() => { setSelectedDataset(dataset.id); fileInputRef.current?.click(); }}
-                                                className="btn btn-secondary"
-                                                style={{ flex: 1, padding: '0.5rem' }}
-                                            >
-                                                Upload
-                                            </button>
-                                        </div>
-                                    </div>
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                {datasets.map((ds) => (
+                                    <Card key={ds.id} className="hover:shadow-md transition-shadow">
+                                        <CardHeader>
+                                            <CardTitle className="text-lg truncate">{ds.name}</CardTitle>
+                                            <CardDescription>{ds.image_count} images</CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <Button onClick={() => openDataset(ds)} className="w-full" variant="secondary">
+                                                Manage
+                                            </Button>
+                                        </CardContent>
+                                    </Card>
                                 ))}
                             </div>
-                        )}
+                        </div>
+                    ) : (
+                        // DETAIL VIEW - REDESIGNED
+                        <div className="space-y-6">
 
-                        <input ref={fileInputRef} type="file" multiple accept="image/*" onChange={(e) => e.target.files && handleUploadImages(e.target.files)} style={{ display: 'none' }} />
-                    </div>
-                )}
-
-                {/* ANALYTICS TAB */}
-                {activeTab === 'analytics' && (
-                    <div>
-                        <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-                            <h3 style={{ marginBottom: '1rem' }}>Export Data for SPSS</h3>
-                            <div className="flex gap-3">
-                                <button onClick={() => handleExportCSV('validation')} className="btn btn-primary">📥 Export Validation Data</button>
-                                <button onClick={() => handleExportCSV('sus')} className="btn btn-secondary">📥 Export SUS Scores</button>
+                            {/* 1. Navigation Row */}
+                            <div>
+                                <Button variant="ghost" onClick={() => setViewingDataset(null)}>
+                                    <ArrowLeft className="mr-2 h-4 w-4" /> Back to Datasets
+                                </Button>
                             </div>
-                        </div>
 
-                        <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-                            <h3 style={{ marginBottom: '1rem' }}>Performance Metrics</h3>
-                            {metrics.length === 0 ? (
-                                <p className="text-muted">No metrics yet.</p>
-                            ) : (
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                    <thead>
-                                        <tr style={{ background: 'var(--gray-100)', textAlign: 'left' }}>
-                                            <th style={{ padding: '0.75rem' }}>Condition</th>
-                                            <th style={{ padding: '0.75rem' }}>Sensitivity</th>
-                                            <th style={{ padding: '0.75rem' }}>Specificity</th>
-                                            <th style={{ padding: '0.75rem' }}>Accuracy</th>
-                                            <th style={{ padding: '0.75rem' }}>F1</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {metrics.map(m => (
-                                            <tr key={m.condition} style={{ borderBottom: '1px solid var(--gray-200)' }}>
-                                                <td style={{ padding: '0.75rem', fontWeight: 500 }}>{m.condition}</td>
-                                                <td style={{ padding: '0.75rem' }}>{(m.sensitivity * 100).toFixed(1)}%</td>
-                                                <td style={{ padding: '0.75rem' }}>{(m.specificity * 100).toFixed(1)}%</td>
-                                                <td style={{ padding: '0.75rem' }}>{(m.accuracy * 100).toFixed(1)}%</td>
-                                                <td style={{ padding: '0.75rem' }}>{(m.f1_score * 100).toFixed(1)}%</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
-                        </div>
-
-                        <div className="card" style={{ padding: '1.5rem' }}>
-                            <h3 style={{ marginBottom: '1rem' }}>Cohen&apos;s Kappa</h3>
-                            {kappa.length === 0 ? (
-                                <p className="text-muted">No kappa data yet.</p>
-                            ) : (
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem' }}>
-                                    {kappa.map(k => (
-                                        <div key={k.condition} style={{ background: 'var(--gray-50)', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
-                                            <div style={{ fontWeight: 600 }}>{k.condition}</div>
-                                            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary-600)' }}>{k.kappa.toFixed(3)}</div>
-                                            <div className="text-sm text-muted">{k.interpretation}</div>
+                            {/* 2. Header Card: Contains Info & Actions */}
+                            <Card>
+                                <CardHeader className="pb-4">
+                                    <div className="flex flex-col gap-2">
+                                        {/* Dataset Name & Description */}
+                                        <div>
+                                            <CardTitle className="text-3xl font-bold tracking-tight">{viewingDataset.name}</CardTitle>
+                                            <CardDescription className="text-base mt-1">
+                                                {viewingDataset.description || "No description provided for this dataset."}
+                                            </CardDescription>
                                         </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
 
-                {/* USERS TAB */}
-                {activeTab === 'users' && (
-                    <div>
-                        <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-                            <div className="flex justify-between items-center">
-                                <h3>User Management</h3>
-                                <button onClick={() => setShowAddUser(true)} className="btn btn-primary">+ Add User</button>
-                            </div>
-                        </div>
+                                        {/* Assigned Experts Section */}
+                                        <div className="bg-muted/50 rounded-lg p-4 border border-muted">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <Shield className="h-4 w-4 text-primary" />
+                                                <span className="text-sm font-semibold text-foreground">Assigned Experts</span>
+                                            </div>
+                                            {selectedExperts.length > 0 ? (
+                                                <div className="flex flex-wrap gap-2">
+                                                    {selectedExperts.map((expertId) => {
+                                                        const expert = expertUsers.find(u => u.id === expertId)
+                                                        return expert ? (
+                                                            <Badge key={expertId} variant="secondary" className="px-3 py-1">
+                                                                {expert.email}
+                                                            </Badge>
+                                                        ) : null
+                                                    })}
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-muted-foreground italic">No experts assigned yet.</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </CardHeader>
 
-                        <div className="card" style={{ padding: '1.5rem' }}>
-                            {users.length === 0 ? (
-                                <p className="text-muted">Loading users...</p>
-                            ) : (
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                    <thead>
-                                        <tr style={{ background: 'var(--gray-100)', textAlign: 'left' }}>
-                                            <th style={{ padding: '0.75rem' }}>Email</th>
-                                            <th style={{ padding: '0.75rem' }}>Name</th>
-                                            <th style={{ padding: '0.75rem' }}>Role</th>
-                                            <th style={{ padding: '0.75rem' }}>Status</th>
-                                            <th style={{ padding: '0.75rem' }}>Joined</th>
-                                            <th style={{ padding: '0.75rem' }}>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {users.map(u => (
-                                            <tr key={u.id} style={{ borderBottom: '1px solid var(--gray-200)' }}>
-                                                <td style={{ padding: '0.75rem' }}>{u.email}</td>
-                                                <td style={{ padding: '0.75rem' }}>{u.full_name || '-'}</td>
-                                                <td style={{ padding: '0.75rem' }}>
-                                                    <select
-                                                        value={u.role}
-                                                        onChange={(e) => handleUpdateUserRole(u.id, e.target.value)}
-                                                        className="input"
-                                                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem', width: 'auto' }}
-                                                        disabled={u.id === user?.id}
-                                                    >
-                                                        <option value="guest">Guest</option>
-                                                        <option value="expert">Expert</option>
-                                                        <option value="admin">Admin</option>
-                                                    </select>
-                                                </td>
-                                                <td style={{ padding: '0.75rem' }}>
-                                                    <span style={{ color: u.is_active ? 'var(--success)' : 'var(--gray-400)' }}>
-                                                        {u.is_active ? '● Active' : '○ Inactive'}
-                                                    </span>
-                                                </td>
-                                                <td style={{ padding: '0.75rem', fontSize: '0.875rem' }}>
-                                                    {new Date(u.created_at).toLocaleDateString()}
-                                                </td>
-                                                <td style={{ padding: '0.75rem' }}>
-                                                    {u.id !== user?.id && (
-                                                        <button
-                                                            onClick={() => handleDeleteUser(u.id)}
-                                                            className="btn"
-                                                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', background: '#991b1b', color: 'white' }}
-                                                        >
-                                                            Delete
-                                                        </button>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
-                        </div>
+                                {/* 3. Action Bar (Card Footer) - Improved Alignment */}
+                                <CardContent className="pt-0">
+                                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-t pt-6">
 
-                        {/* Add User Modal */}
-                        {showAddUser && (
-                            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-                                <div className="card" style={{ padding: '2rem', width: '400px' }}>
-                                    <h3 style={{ marginBottom: '1rem' }}>Add New User</h3>
-                                    <div style={{ marginBottom: '1rem' }}>
-                                        <label className="label">Email *</label>
-                                        <input type="email" className="input" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} />
-                                    </div>
-                                    <div style={{ marginBottom: '1rem' }}>
-                                        <label className="label">Password *</label>
-                                        <input type="password" className="input" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} />
-                                    </div>
-                                    <div style={{ marginBottom: '1rem' }}>
-                                        <label className="label">Full Name</label>
-                                        <input type="text" className="input" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} />
-                                    </div>
-                                    <div style={{ marginBottom: '1.5rem' }}>
-                                        <label className="label">Role</label>
-                                        <select className="input" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)}>
-                                            <option value="guest">Guest</option>
-                                            <option value="expert">Expert</option>
-                                            <option value="admin">Admin</option>
-                                        </select>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={handleAddUser} className="btn btn-primary" style={{ flex: 1 }}>Add User</button>
-                                        <button onClick={() => setShowAddUser(false)} className="btn btn-secondary" style={{ flex: 1 }}>Cancel</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
+                                        {/* Left Side: Management Actions */}
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <Dialog open={editDatasetModal} onOpenChange={setEditDatasetModal}>
+                                                <DialogTrigger asChild>
+                                                    <Button variant="outline" size="default">
+                                                        <span className="flex items-center gap-2">
+                                                            <Settings className="h-4 w-4" /> Edit Details
+                                                        </span>
+                                                    </Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                    <DialogHeader>
+                                                        <DialogTitle>Edit Dataset</DialogTitle>
+                                                        <DialogDescription>Update name and description.</DialogDescription>
+                                                    </DialogHeader>
+                                                    <div className="space-y-4 py-4">
+                                                        <div>
+                                                            <Label>Dataset Name</Label>
+                                                            <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="e.g. Clinical Set A" />
+                                                        </div>
+                                                        <div>
+                                                            <Label>Description</Label>
+                                                            <Input value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="Brief description..." />
+                                                        </div>
+                                                    </div>
+                                                    <DialogFooter>
+                                                        <Button onClick={handleUpdateDataset}>Save Changes</Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
 
-                {/* SUS TAB */}
-                {activeTab === 'sus' && (
-                    <div>
-                        <div className="card" style={{ padding: '2rem' }}>
-                            <div className="flex justify-between items-center" style={{ marginBottom: '1.5rem' }}>
-                                <h3>System Usability Scale (SUS) Questions</h3>
-                                <button onClick={() => setEditingSus(!editingSus)} className="btn btn-primary">
-                                    {editingSus ? 'Cancel' : 'Edit Questions'}
-                                </button>
-                            </div>
+                                            <Dialog open={assignModal} onOpenChange={setAssignModal}>
+                                                <DialogTrigger asChild>
+                                                    <Button variant="outline" size="default">
+                                                        <span className="flex items-center gap-2">
+                                                            <UserPlus className="h-4 w-4" /> Assign Experts
+                                                        </span>
+                                                    </Button>
+                                                </DialogTrigger>
+                                                <DialogContent className="max-w-lg">
+                                                    <DialogHeader>
+                                                        <DialogTitle>Assign Experts</DialogTitle>
+                                                        <DialogDescription>Select experts who can review this dataset.</DialogDescription>
+                                                    </DialogHeader>
+                                                    <div className="max-h-60 overflow-y-auto space-y-2 py-4 border rounded-md p-2">
+                                                        {expertUsers.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No experts available in the system.</p>}
+                                                        {expertUsers.map(exp => (
+                                                            <label key={exp.id} className="flex items-center space-x-3 p-2 hover:bg-muted rounded cursor-pointer transition-colors">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={selectedExperts.includes(exp.id)}
+                                                                    onChange={(e) => {
+                                                                        if (e.target.checked) setSelectedExperts([...selectedExperts, exp.id])
+                                                                        else setSelectedExperts(selectedExperts.filter(id => id !== exp.id))
+                                                                    }}
+                                                                    className="h-4 w-4"
+                                                                />
+                                                                <span className="text-sm font-medium">{exp.email}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                    <DialogFooter>
+                                                        <Button onClick={handleSaveAssignments} className="w-full">Save Assignments</Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
+                                        </div>
 
-                            {editingSus ? (
-                                <div>
-                                    {Object.entries(susQuestions || {}).sort().map(([key, value]) => (
-                                        <div key={key} style={{ marginBottom: '1rem' }}>
-                                            <label className="label" style={{ textTransform: 'uppercase', fontWeight: 700 }}>{key}</label>
+                                        {/* Right Side: Data Operations */}
+                                        <div className="flex items-center gap-2 w-full md:w-auto">
                                             <input
-                                                type="text"
-                                                className="input"
-                                                value={value}
-                                                onChange={(e) => setSusQuestions(prev => ({ ...prev, [key]: e.target.value }))}
+                                                type="file"
+                                                multiple
+                                                id="file-upload"
+                                                className="hidden"
+                                                onChange={handleUploadImages}
                                             />
+                                            <label htmlFor="file-upload" className="flex-1 md:flex-none">
+                                                <Button asChild className="w-full md:w-auto">
+                                                    <span className="flex items-center gap-2 cursor-pointer justify-center">
+                                                        <Upload className="h-4 w-4" /> Upload Images
+                                                    </span>
+                                                </Button>
+                                            </label>
+
+                                            <Button variant="destructive" onClick={handleDeleteDataset} className="w-full md:w-auto">
+                                                <span className="flex items-center gap-2">
+                                                    <Trash2 className="h-4 w-4" /> Delete Dataset
+                                                </span>
+                                            </Button>
                                         </div>
+
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* 4. Images Card */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Dataset Images ({datasetImages.length})</CardTitle>
+                                    <CardDescription>Manage images within this dataset.</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    {datasetImages.length === 0 ? (
+                                        <div className="text-center py-12 border-2 border-dashed rounded-lg">
+                                            <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                                            <p className="text-muted-foreground font-medium">No images uploaded yet.</p>
+                                            <label htmlFor="file-upload-mobile" className="mt-4">
+                                                <Button variant="link" asChild>
+                                                    <span className="flex items-center gap-2 cursor-pointer">
+                                                        <Upload className="h-4 w-4" /> Upload first image
+                                                    </span>
+                                                </Button>
+                                            </label>
+                                            {/* Hidden input to trigger the same file handler for the empty state button */}
+                                            <input type="file" multiple id="file-upload-mobile" className="hidden" onChange={handleUploadImages} />
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                            {datasetImages.map((img) => (
+                                                <div key={img.id} className="relative group rounded-md overflow-hidden border bg-background">
+                                                    <img
+                                                        src={`${API_URL}${img.image_url}`}
+                                                        alt="Dental"
+                                                        className="w-full h-40 object-cover"
+                                                    />
+
+                                                    {/* Overlay Actions on Hover */}
+                                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 p-2">
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="icon"
+                                                            onClick={() => handleDeleteImage(img.id)}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+
+                                                    <div className="p-2 bg-background border-t">
+                                                        <p className="text-xs text-center truncate font-medium" title={img.original_filename}>
+                                                            {img.original_filename}
+                                                        </p>
+                                                        <p className="text-[10px] text-center text-muted-foreground">
+                                                            {img.image_type || 'Unknown Type'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </div>
+                    )}
+                </TabsContent>
+
+                {/* --- ANALYTICS TAB --- */}
+                <TabsContent value="analytics" className="space-y-6">
+                    <Card>
+                        <CardHeader><CardTitle>Performance Metrics</CardTitle></CardHeader>
+                        <CardContent>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Condition</TableHead>
+                                        <TableHead className="text-right">Sensitivity</TableHead>
+                                        <TableHead className="text-right">Accuracy</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {metrics.map((m) => (
+                                        <TableRow key={m.condition}>
+                                            <TableCell className="font-medium">{m.condition}</TableCell>
+                                            <TableCell className="text-right">{(m.sensitivity * 100).toFixed(1)}%</TableCell>
+                                            <TableCell className="text-right">{(m.accuracy * 100).toFixed(1)}%</TableCell>
+                                        </TableRow>
                                     ))}
-                                    <div className="flex gap-2" style={{ marginTop: '1.5rem' }}>
-                                        <button onClick={handleUpdateSUS} className="btn btn-success">Save Changes</button>
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* --- USERS TAB --- */}
+                <TabsContent value="users" className="space-y-6">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex justify-between items-center">
+                                <CardTitle>User Management</CardTitle>
+                                <Button onClick={() => setShowAddUser(true)}><UserPlus className="mr-2 h-4 w-4" /> Add User</Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            {showAddUser && (
+                                <div className="mb-6 p-4 border rounded-md bg-muted/50 space-y-4">
+                                    <h4 className="font-semibold">Add New User</h4>
+                                    <div className="grid gap-2">
+                                        <div><Label>Email</Label><Input value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} /></div>
+                                        <div><Label>Password</Label><Input type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} /></div>
+                                        <div><Label>Full Name</Label><Input value={newUserName} onChange={(e) => setNewUserName(e.target.value)} /></div>
+                                        <div>
+                                            <Label>Role</Label>
+                                            <select className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm" value={newUserRole} onChange={(e) => setNewUserRole(e.target.value)}>
+                                                <option value="guest">Guest</option>
+                                                <option value="expert">Expert</option>
+                                                <option value="admin">Admin</option>
+                                            </select>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button onClick={handleAddUser}>Save</Button>
+                                            <Button variant="outline" onClick={() => setShowAddUser(false)}>Cancel</Button>
+                                        </div>
                                     </div>
                                 </div>
-                            ) : (
-                                <ol style={{ paddingLeft: '1.5rem', lineHeight: '2' }}>
-                                    {Object.entries(susQuestions || {}).sort().map(([key, value]) => (
-                                        <li key={key}><strong>{key}:</strong> {value}</li>
-                                    ))}
-                                </ol>
                             )}
-                        </div>
-                    </div>
-                )}
-            </main>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Email</TableHead>
+                                        <TableHead>Role</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead className="text-right">Actions</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {users.map((u) => (
+                                        <TableRow key={u.id}>
+                                            <TableCell>{u.email}</TableCell>
+                                            <TableCell><Badge variant={u.role === "admin" ? "default" : "secondary"}>{u.role}</Badge></TableCell>
+                                            <TableCell>{u.is_active ? "Active" : "Inactive"}</TableCell>
+                                            <TableCell className="text-right">
+                                                <select className="h-8 rounded border bg-background px-2 text-xs" value={u.role} onChange={(e) => handleUpdateUserRole(u.id, e.target.value)} disabled={u.id === user.id}>
+                                                    <option value="guest">Guest</option>
+                                                    <option value="expert">Expert</option>
+                                                    <option value="admin">Admin</option>
+                                                </select>
+                                                {u.id !== user.id && (
+                                                    <Button variant="ghost" size="icon" className="ml-2 h-8 w-8 text-destructive" onClick={() => handleDeleteUser(u.id)}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* --- SUS TAB --- */}
+                <TabsContent value="sus" className="space-y-6">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>SUS Questions</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-4">
+                                {Object.entries(susQuestions || {}).sort().map(([key, value]) => (
+                                    <div key={key}>
+                                        <Label className="text-sm font-medium mb-1 block uppercase text-muted-foreground">{key}</Label>
+                                        <Input value={value} onChange={(e) => setSusQuestions(prev => ({ ...prev, [key]: e.target.value }))} />
+                                    </div>
+                                ))}
+                                <Button onClick={async () => {
+                                    await api.updateSUSQuestions(susQuestions)
+                                    Swal.fire('Saved', 'Questions updated', 'success')
+                                }}>Save Changes</Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
         </div>
-    );
+    )
 }

@@ -9,7 +9,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy import select
+from sqlalchemy import delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from pydantic import BaseModel
 
@@ -20,6 +22,8 @@ from app.models.sus_questionnaire import SUSQuestionnaire
 from app.models.dataset import Dataset, dataset_experts
 from app.models.image import Image, ImageType
 from app.routers.auth import require_role
+from app.models.assessment import ExpertAssessment
+from app.models.inference import AIInference
 
 router = APIRouter()
 settings = get_settings()
@@ -405,23 +409,50 @@ async def update_dataset(
     return {"message": "Dataset updated"}
 
 
+@router.get("/datasets/{dataset_id}/experts")
+async def get_dataset_experts(
+    dataset_id: UUID,
+    current_user: Annotated[User, Depends(require_role(UserRole.ADMIN))],
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the list of expert IDs assigned to a dataset."""
+    # Use selectinload to avoid "MissingGreenlet" async lazy loading errors
+    result = await db.execute(
+        select(Dataset).options(selectinload(Dataset.assigned_experts)).where(Dataset.id == dataset_id)
+    )
+    dataset = result.scalar_one_or_none()
+    
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+        
+    # Return list of expert IDs
+    return [expert.id for expert in dataset.assigned_experts]
+
+
 @router.delete("/images/{image_id}")
 async def delete_image(
     image_id: UUID,
     current_user: Annotated[User, Depends(require_role(UserRole.ADMIN))],
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete an image."""
-    result = await db.execute(
-        select(Image).where(Image.id == image_id)
+    """Delete an image and all its related data (assessments, inferences)."""
+    
+    # 1. Delete Expert Assessments related to this image
+    await db.execute(
+        sql_delete(ExpertAssessment).where(ExpertAssessment.image_id == image_id)
     )
+    
+    # 2. Delete AI Inferences related to this image
+    await db.execute(
+        sql_delete(AIInference).where(AIInference.image_id == image_id)
+    )
+    
+    # 3. Finally, delete the Image
+    result = await db.execute(select(Image).where(Image.id == image_id))
     image = result.scalar_one_or_none()
     
     if not image:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Image not found",
-        )
+        raise HTTPException(status_code=404, detail="Image not found")
     
     # Delete file from disk
     if image.file_path and os.path.exists(image.file_path):
@@ -429,9 +460,11 @@ async def delete_image(
             os.remove(image.file_path)
         except OSError:
             pass
-    
+            
     await db.delete(image)
-    return {"message": "Image deleted"}
+    await db.commit()
+    
+    return {"message": "Image and all related data deleted"}
 
 
 class DatasetUpdateExperts(BaseModel):

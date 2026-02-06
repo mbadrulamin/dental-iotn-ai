@@ -1,188 +1,97 @@
-'use client';
+"use client"
 
-import { useEffect } from 'react';
-import Link from 'next/link';
-import { useAuthStore } from '@/lib/auth';
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Activity, LayoutDashboard, FileEdit, Moon, Sun } from "lucide-react"
+import { useAuthStore } from "@/lib/auth"
+import { useEffect } from "react"
 
 export default function HomePage() {
-    const { user, isAuthenticated, checkAuth, logout } = useAuthStore();
+    const { isAuthenticated, checkAuth, user } = useAuthStore()
 
     useEffect(() => {
-        checkAuth();
-    }, [checkAuth]);
+        checkAuth()
+    }, [checkAuth])
+
+    const features = [
+        {
+            icon: Activity,
+            title: "AI Classification",
+            description: "5 specialized models detect orthodontic conditions with high accuracy.",
+        },
+        {
+            icon: LayoutDashboard,
+            title: "IOTN DHC Grading",
+            description: "Accurate Grade 1-5 calculation based on clinical standards.",
+        },
+        {
+            icon: FileEdit,
+            title: "Expert Validation",
+            description: "Blind review system for research-grade data validation.",
+        },
+    ]
 
     return (
-        <div style={{ minHeight: '100vh' }}>
+        <div className="flex flex-col">
             {/* Hero Section */}
-            <header style={{
-                background: 'var(--gradient-dark)',
-                color: 'white',
-                padding: '1rem 0',
-            }}>
-                <div className="container flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <span style={{ fontSize: '1.5rem' }}>🦷</span>
-                        <span style={{ fontSize: '1.25rem', fontWeight: 600 }}>Dental IOTN AI</span>
-                    </div>
-                    <nav className="flex items-center gap-4">
-                        {isAuthenticated ? (
-                            <>
-                                <Link href="/diagnostic" className="btn btn-secondary" style={{ color: 'white', border: 'none', background: 'transparent' }}>
-                                    Diagnostic Tool
-                                </Link>
-                                {(user?.role === 'expert' || user?.role === 'admin') && (
-                                    <Link href="/expert" className="btn btn-secondary" style={{ color: 'white', border: 'none', background: 'transparent' }}>
-                                        Expert Review
-                                    </Link>
-                                )}
-                                {user?.role === 'admin' && (
-                                    <Link href="/admin" className="btn btn-secondary" style={{ color: 'white', border: 'none', background: 'transparent' }}>
-                                        Admin
-                                    </Link>
-                                )}
-                                <span style={{ color: 'var(--gray-400)', fontSize: '0.875rem' }}>
-                                    {user?.email}
-                                </span>
-                                <button
-                                    onClick={logout}
-                                    className="btn"
-                                    style={{
-                                        background: 'rgba(255,255,255,0.1)',
-                                        color: 'white',
-                                        border: '1px solid rgba(255,255,255,0.2)',
-                                        padding: '0.5rem 1rem',
-                                    }}
-                                >
-                                    Logout
-                                </button>
-                            </>
-                        ) : (
-                            <>
-                                <Link href="/login" className="btn btn-secondary" style={{ color: 'white', border: 'none', background: 'transparent' }}>
-                                    Login
-                                </Link>
-                                <Link href="/register" className="btn btn-accent">
-                                    Register
-                                </Link>
-                            </>
-                        )}
-                    </nav>
-                </div>
-            </header>
-
-            {/* Hero Content */}
-            <section style={{
-                background: 'var(--gradient-primary)',
-                padding: '6rem 0',
-                textAlign: 'center',
-                color: 'white',
-            }}>
-                <div className="container">
-                    <h1 style={{ fontSize: '3rem', marginBottom: '1.5rem', fontWeight: 700 }}>
-                        AI-Powered Dental Diagnostic Platform
+            <section className="container py-24 md:py-32 lg:py-40 flex flex-col items-center text-center gap-6">
+                <div className="space-y-4 max-w-3xl">
+                    <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl md:text-6xl lg:text-7xl">
+                        AI-Powered Dental Diagnostics
                     </h1>
-                    <p style={{ fontSize: '1.25rem', opacity: 0.9, maxWidth: '700px', margin: '0 auto 2rem' }}>
-                        Get instant IOTN DHC grading powered by advanced AI models.
-                        Upload dental images, input clinical measurements, and receive comprehensive diagnostic results.
+                    <p className="mx-auto max-w-[700px] text-muted-foreground md:text-xl">
+                        Get instant IOTN DHC grading powered by advanced AI models. Upload dental images and receive comprehensive diagnostic results.
                     </p>
-                    <div className="flex justify-center gap-4">
-                        <Link href="/diagnostic" className="btn" style={{
-                            background: 'white',
-                            color: 'var(--primary-700)',
-                            padding: '1rem 2rem',
-                            fontSize: '1.1rem',
-                        }}>
-                            Start Diagnostic →
-                        </Link>
-                        {!isAuthenticated && (
-                            <Link href="/register" className="btn btn-secondary" style={{
-                                background: 'transparent',
-                                border: '2px solid white',
-                                color: 'white',
-                                padding: '1rem 2rem',
-                                fontSize: '1.1rem',
-                            }}>
-                                Create Account
-                            </Link>
-                        )}
-                        {isAuthenticated && user?.role === 'admin' && (
-                            <Link href="/admin" className="btn btn-secondary" style={{
-                                background: 'transparent',
-                                border: '2px solid white',
-                                color: 'white',
-                                padding: '1rem 2rem',
-                                fontSize: '1.1rem',
-                            }}>
-                                Admin Dashboard
-                            </Link>
-                        )}
-                    </div>
+                </div>
+                <div className="flex flex-col gap-2 min-[400px]:flex-row">
+                    {isAuthenticated ? (
+                        <Button size="lg" asChild>
+                            <Link href="/diagnostic">Start Diagnostic</Link>
+                        </Button>
+                    ) : (
+                        <Button size="lg" asChild>
+                            <Link href="/login">Get Started</Link>
+                        </Button>
+                    )}
+                    <Button variant="outline" size="lg" asChild>
+                        <Link href="#features">Learn More</Link>
+                    </Button>
                 </div>
             </section>
 
-            {/* Features */}
-            <section style={{ padding: '5rem 0', background: 'var(--gray-50)' }}>
-                <div className="container">
-                    <h2 style={{ textAlign: 'center', marginBottom: '3rem' }}>Platform Features</h2>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
-                        <div className="card" style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔬</div>
-                            <h3 style={{ marginBottom: '0.75rem' }}>AI Classification</h3>
-                            <p className="text-muted">
-                                5 specialized models detect Crossbite, Overbite, Openbite, Displacement, and Overjet.
-                            </p>
-                        </div>
-                        <div className="card" style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📏</div>
-                            <h3 style={{ marginBottom: '0.75rem' }}>IOTN DHC Grading</h3>
-                            <p className="text-muted">
-                                Accurate Grade 1-5 calculation based on clinical measurements and AI detection.
-                            </p>
-                        </div>
-                        <div className="card" style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎯</div>
-                            <h3 style={{ marginBottom: '0.75rem' }}>Teeth Segmentation</h3>
-                            <p className="text-muted">
-                                Precise segmentation of occlusal view images with interactive mask overlay.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            {/* IOTN Grades Info */}
-            <section style={{ padding: '5rem 0', background: 'white' }}>
-                <div className="container">
-                    <h2 style={{ textAlign: 'center', marginBottom: '3rem' }}>IOTN DHC Grades</h2>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
-                        {[
-                            { grade: 1, title: 'No Need', desc: 'Normal occlusion' },
-                            { grade: 2, title: 'Little Need', desc: 'Minor irregularities' },
-                            { grade: 3, title: 'Borderline', desc: 'Moderate problems' },
-                            { grade: 4, title: 'Treatment Needed', desc: 'Health grounds' },
-                            { grade: 5, title: 'Very Great Need', desc: 'Severe issues' },
-                        ].map(({ grade, title, desc }) => (
-                            <div key={grade} className={`card grade-${grade}`} style={{ textAlign: 'center' }}>
-                                <div style={{ fontSize: '2.5rem', fontWeight: 700 }}>Grade {grade}</div>
-                                <div style={{ fontWeight: 600, marginTop: '0.5rem' }}>{title}</div>
-                                <div style={{ fontSize: '0.875rem', marginTop: '0.25rem' }}>{desc}</div>
-                            </div>
-                        ))}
-                    </div>
+            {/* Features Section */}
+            <section id="features" className="container py-24 bg-muted/50 rounded-3xl my-12">
+                <h2 className="text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-center mb-16">
+                    Platform Features
+                </h2>
+                <div className="grid gap-6 md:grid-cols-3">
+                    {features.map((feature, index) => (
+                        <Card key={index}>
+                            <CardHeader>
+                                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
+                                    <feature.icon className="h-6 w-6 text-primary" />
+                                </div>
+                                <CardTitle>{feature.title}</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <CardDescription className="text-base">
+                                    {feature.description}
+                                </CardDescription>
+                            </CardContent>
+                        </Card>
+                    ))}
                 </div>
             </section>
 
             {/* Footer */}
-            <footer style={{
-                background: 'var(--gray-900)',
-                color: 'var(--gray-400)',
-                padding: '2rem 0',
-                textAlign: 'center',
-            }}>
-                <div className="container">
-                    <p>© 2024 Dental IOTN AI Platform - Research & Diagnostic Tool</p>
+            <footer className="border-t py-6 md:py-0">
+                <div className="container flex h-16 items-center justify-between">
+                    <p className="text-sm text-muted-foreground">
+                        © 2024 Dental IOTN AI. All rights reserved.
+                    </p>
                 </div>
             </footer>
         </div>
-    );
+    )
 }

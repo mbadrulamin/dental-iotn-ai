@@ -1,117 +1,93 @@
-'use client';
+"use client"
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { useAuthStore } from '@/lib/auth';
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { useAuthStore } from "@/lib/auth"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Loader2 } from "lucide-react"
 
 export default function LoginPage() {
-    const router = useRouter();
-    const { login, isLoading } = useAuthStore();
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
+    const router = useRouter()
+    const { login, isLoading } = useAuthStore()
+    const [email, setEmail] = useState("")
+    const [password, setPassword] = useState("")
+    const [error, setError] = useState("")
 
     const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError('');
+        e.preventDefault()
+        setError("")
 
         try {
-            await login({ email, password });
-            router.push('/diagnostic');
+            await login({ email, password })
+            router.push("/diagnostic")
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Login failed. Please try again.');
+            setError(err.response?.data?.detail || "Login failed. Please try again.")
         }
-    };
+    }
 
     return (
-        <div style={{
-            minHeight: '100vh',
-            background: 'var(--gradient-primary)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '2rem',
-        }}>
-            <div className="card animate-fadeIn" style={{
-                width: '100%',
-                maxWidth: '420px',
-                padding: '2.5rem',
-            }}>
-                <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-                    <span style={{ fontSize: '3rem' }}>🦷</span>
-                    <h1 style={{ fontSize: '1.75rem', marginTop: '0.5rem' }}>Welcome Back</h1>
-                    <p className="text-muted">Sign in to your account</p>
-                </div>
-
-                <form onSubmit={handleSubmit}>
-                    {error && (
-                        <div style={{
-                            background: '#fee2e2',
-                            color: '#991b1b',
-                            padding: '0.75rem 1rem',
-                            borderRadius: 'var(--radius-md)',
-                            marginBottom: '1rem',
-                            fontSize: '0.875rem',
-                        }}>
-                            {error}
+        <div className="min-h-screen flex items-center justify-center bg-muted/40 px-4">
+            <Card className="w-full max-w-sm">
+                <CardHeader className="space-y-1">
+                    <CardTitle className="text-2xl font-bold">Sign in</CardTitle>
+                    <CardDescription>
+                        Enter your email and password to access your account
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        {error && (
+                            <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md">
+                                {error}
+                            </div>
+                        )}
+                        <div className="space-y-2">
+                            <Label htmlFor="email">Email</Label>
+                            <Input
+                                id="email"
+                                type="email"
+                                placeholder="m@example.com"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                required
+                                disabled={isLoading}
+                            />
                         </div>
-                    )}
-
-                    <div style={{ marginBottom: '1.25rem' }}>
-                        <label className="label">Email Address</label>
-                        <input
-                            type="email"
-                            className="input"
-                            placeholder="you@example.com"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            required
-                        />
-                    </div>
-
-                    <div style={{ marginBottom: '1.5rem' }}>
-                        <label className="label">Password</label>
-                        <input
-                            type="password"
-                            className="input"
-                            placeholder="••••••••"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                        />
-                    </div>
-
-                    <button
-                        type="submit"
-                        className="btn btn-primary"
-                        style={{ width: '100%', padding: '0.875rem' }}
-                        disabled={isLoading}
-                    >
-                        {isLoading ? 'Signing in...' : 'Sign In'}
-                    </button>
-                </form>
-
-                <div style={{
-                    marginTop: '1.5rem',
-                    textAlign: 'center',
-                    paddingTop: '1.5rem',
-                    borderTop: '1px solid var(--gray-200)',
-                }}>
-                    <p className="text-muted">
-                        Don't have an account?{' '}
-                        <Link href="/register" style={{ fontWeight: 500 }}>
-                            Create one
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <Label htmlFor="password">Password</Label>
+                            </div>
+                            <Input
+                                id="password"
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
+                                disabled={isLoading}
+                            />
+                        </div>
+                        <Button className="w-full" type="submit" disabled={isLoading}>
+                            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Sign In
+                        </Button>
+                    </form>
+                </CardContent>
+                <CardFooter className="flex flex-col space-y-4">
+                    <div className="text-sm text-muted-foreground text-center w-full">
+                        Don't have an account?{" "}
+                        <Link href="/register" className="underline underline-offset-4 hover:text-primary">
+                            Sign up
                         </Link>
-                    </p>
-                </div>
-
-                <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-                    <Link href="/" style={{ fontSize: '0.875rem' }}>
-                        ← Back to Home
+                    </div>
+                    <Link href="/" className="text-sm text-center text-muted-foreground hover:text-primary w-full">
+                        Back to Home
                     </Link>
-                </div>
-            </div>
+                </CardFooter>
+            </Card>
         </div>
-    );
+    )
 }
