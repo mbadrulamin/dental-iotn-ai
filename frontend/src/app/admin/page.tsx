@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Trash2, Plus, Settings, FileText, BarChart3, Users, ArrowLeft, Upload, CheckCircle, UserPlus, Shield } from "lucide-react"
+import { Trash2, Plus, Settings, FileText, BarChart3, Users, ArrowLeft, Upload, CheckCircle, UserPlus, Shield, Activity, Loader2, CheckCircle2, XCircle } from "lucide-react"
 import Swal from "sweetalert2"
 
 export default function AdminPage() {
@@ -45,6 +45,11 @@ export default function AdminPage() {
 
     // SUS State
     const [susQuestions, setSusQuestions] = useState<Record<string, string>>({})
+
+    // Analytics State
+    const [analyticsDatasetId, setAnalyticsDatasetId] = useState<string | null>(null)
+    const [comparisonData, setComparisonData] = useState<any[]>([])
+    const [loadingComparison, setLoadingComparison] = useState(false)
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
@@ -192,6 +197,67 @@ export default function AdminPage() {
             }
         }
     }
+
+
+    const handleProcessDataset = async () => {
+        const result = await Swal.fire({
+            title: 'Run AI Analysis?',
+            text: "This will run all 5 AI models on unprocessed images. It may take a while depending on your GPU.",
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Start Processing',
+            confirmButtonColor: '#3085d6',
+        })
+
+        if (result.isConfirmed) {
+            Swal.fire({
+                title: 'Processing...',
+                text: 'Please wait while the AI models analyze the images.',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading()
+                }
+            });
+
+            try {
+                const res = await fetch(`${API_URL}/api/admin/datasets/${viewingDataset.id}/process`, {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${localStorage.getItem("access_token")}` },
+                })
+
+                if (res.ok) {
+                    const data = await res.json()
+                    Swal.fire('Completed!', data.message, 'success')
+                    loadData() // Reload stats and datasets
+                    openDataset(viewingDataset) // Reload images to update status
+                } else {
+                    throw new Error("Failed")
+                }
+            } catch (err) {
+                Swal.fire('Error', 'Processing failed. Check backend logs.', 'error')
+            }
+        }
+    }
+
+    const loadComparisonData = async (datasetId: string) => {
+        setLoadingComparison(true)
+        setComparisonData([])
+        setAnalyticsDatasetId(datasetId)
+        try {
+            const res = await fetch(`${API_URL}/api/analytics/dataset-comparison/${datasetId}`, {
+                headers: { "Authorization": `Bearer ${localStorage.getItem("access_token")}` },
+            })
+            if (res.ok) {
+                const data = await res.json()
+                setComparisonData(data)
+            }
+        } catch (err) {
+            Swal.fire('Error', 'Failed to load comparison data', 'error')
+        } finally {
+            setLoadingComparison(false)
+        }
+    }
+
 
     const handleUploadImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files || e.target.files.length === 0) return
@@ -343,6 +409,31 @@ export default function AdminPage() {
             </div>
         )
     }
+
+    // Helper component to render condition badges consistently
+    const ConditionBadge = ({ type, condition, value }: { type: 'ai' | 'expert', condition: string, value: string }) => {
+        // Value is 'present'/'absent' for AI, 'yes'/'no' for Expert
+
+        // AI Styling (Blue/Gray)
+        if (type === 'ai') {
+            if (value === 'present') {
+                return <Badge variant="default" className="text-xs">{condition} (Yes)</Badge>
+            } else {
+                return <Badge variant="outline" className="text-xs border-gray-300 text-gray-500">{condition} (No)</Badge>
+            }
+        }
+
+        // Expert Styling (Green/Gray)
+        if (type === 'expert') {
+            if (value === 'yes') {
+                return <Badge variant="default" className="text-xs bg-green-600 hover:bg-green-700">{condition} (Yes)</Badge>
+            } else {
+                return <Badge variant="secondary" className="text-xs">{condition} (No)</Badge>
+            }
+        }
+
+        return <span className="text-xs text-muted-foreground">{condition} (N/A)</span>
+    };
 
     return (
         <div className="container py-8">
@@ -513,6 +604,16 @@ export default function AdminPage() {
                                                     </DialogFooter>
                                                 </DialogContent>
                                             </Dialog>
+
+                                            {/* Run AI Analysis Button */}
+                                            <Button
+                                                onClick={handleProcessDataset}
+                                                className="bg-blue-600 hover:bg-blue-700"
+                                            >
+                                                <span className="flex items-center gap-2">
+                                                    <Activity className="h-4 w-4" /> Run AI Analysis
+                                                </span>
+                                            </Button>
                                         </div>
 
                                         {/* Right Side: Data Operations */}
@@ -605,14 +706,165 @@ export default function AdminPage() {
 
                 {/* --- ANALYTICS TAB --- */}
                 <TabsContent value="analytics" className="space-y-6">
+                    {/* Dataset Selector */}
                     <Card>
-                        <CardHeader><CardTitle>Performance Metrics</CardTitle></CardHeader>
+                        <CardHeader>
+                            <CardTitle>Detailed Comparison</CardTitle>
+                            <CardDescription>Select a dataset to view image-by-image AI vs. Expert results for all 5 conditions.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex items-center gap-4">
+                                <Label htmlFor="analytics-dataset-select">Select Dataset:</Label>
+                                <select
+                                    id="analytics-dataset-select"
+                                    className="flex h-10 w-full max-w-md items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    value={analyticsDatasetId || ""}
+                                    onChange={(e) => {
+                                        if (e.target.value) {
+                                            loadComparisonData(e.target.value)
+                                        } else {
+                                            setComparisonData([])
+                                            setAnalyticsDatasetId(null)
+                                        }
+                                    }}
+                                >
+                                    <option value="">-- Choose a dataset --</option>
+                                    {datasets.map((ds) => (
+                                        <option key={ds.id} value={ds.id}>{ds.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Detailed Comparison Table */}
+                    {loadingComparison ? (
+                        <div className="text-center py-8"><Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" /></div>
+                    ) : comparisonData.length > 0 ? (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Image-by-Image Analysis ({comparisonData.length} Images)</CardTitle>
+                                <CardDescription>Full comparison: Overjet, Overbite, Crossbite, Displacement, Openbite.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="overflow-x-auto">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="w-[200px]">Image</TableHead>
+                                                <TableHead>AI Analysis (5 Models)</TableHead>
+                                                <TableHead>Expert Review</TableHead>
+                                                <TableHead className="text-center">Status</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {comparisonData.map((item, idx) => {
+                                                // 1. Calculate Status
+                                                let statusIcon = <span className="text-xs text-muted-foreground">Pending</span>;
+                                                let statusColor = "text-muted-foreground";
+
+                                                if (item.expert_results && Object.keys(item.expert_results).length > 0) {
+                                                    let matches = 0;
+                                                    let total = 0;
+                                                    const conditions = ['overjet', 'overbite', 'crossbite', 'displacement', 'openbite'];
+
+                                                    conditions.forEach(cond => {
+                                                        const aiVal = item.ai_results[cond]; // 'present' or 'absent'
+                                                        const expVal = item.expert_results[cond]; // 'yes' or 'no'
+
+                                                        if (aiVal && expVal) {
+                                                            total++;
+                                                            if ((aiVal === 'present' && expVal === 'yes') || (aiVal === 'absent' && expVal === 'no')) {
+                                                                matches++;
+                                                            }
+                                                        }
+                                                    });
+
+                                                    if (total > 0) {
+                                                        if (matches === total) {
+                                                            statusIcon = <CheckCircle2 className="h-5 w-5 mx-auto text-green-500" />;
+                                                            statusColor = "text-green-500";
+                                                        } else if (matches === 0) {
+                                                            statusIcon = <XCircle className="h-5 w-5 mx-auto text-red-500" />;
+                                                            statusColor = "text-red-500";
+                                                        } else {
+                                                            statusIcon = <span className="text-xs font-bold text-orange-500">Partial</span>;
+                                                            statusColor = "text-orange-500";
+                                                        }
+                                                    }
+                                                }
+
+                                                return (
+                                                    <TableRow key={idx}>
+                                                        {/* Image Column */}
+                                                        <TableCell className="font-medium">
+                                                            <div className="flex items-center gap-2">
+                                                                <img
+                                                                    src={`${API_URL}${item.image_url}`}
+                                                                    alt="thumb"
+                                                                    className="w-10 h-10 rounded object-cover border"
+                                                                />
+                                                                <span className="truncate max-w-[120px]" title={item.filename}>{item.filename}</span>
+                                                            </div>
+                                                        </TableCell>
+
+                                                        {/* AI Analysis Column (All 5 Conditions) */}
+                                                        <TableCell>
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                <ConditionBadge type="ai" condition="Overjet" value={item.ai_results.overjet} />
+                                                                <ConditionBadge type="ai" condition="Overbite" value={item.ai_results.overbite} />
+                                                                <ConditionBadge type="ai" condition="Crossbite" value={item.ai_results.crossbite} />
+                                                                <ConditionBadge type="ai" condition="Displacement" value={item.ai_results.displacement} />
+                                                                <ConditionBadge type="ai" condition="Openbite" value={item.ai_results.openbite} />
+                                                            </div>
+                                                        </TableCell>
+
+                                                        {/* Expert Review Column (All 5 Conditions) */}
+                                                        <TableCell>
+                                                            {Object.keys(item.expert_results).length > 0 ? (
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    <ConditionBadge type="expert" condition="Overjet" value={item.expert_results.overjet} />
+                                                                    <ConditionBadge type="expert" condition="Overbite" value={item.expert_results.overbite} />
+                                                                    <ConditionBadge type="expert" condition="Crossbite" value={item.expert_results.crossbite} />
+                                                                    <ConditionBadge type="expert" condition="Displacement" value={item.expert_results.displacement} />
+                                                                    <ConditionBadge type="expert" condition="Openbite" value={item.expert_results.openbite} />
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-xs text-muted-foreground italic">No Review</span>
+                                                            )}
+                                                        </TableCell>
+
+                                                        {/* Status Column */}
+                                                        <TableCell className="text-center">
+                                                            <div className={statusColor}>{statusIcon}</div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <div className="text-center py-12 text-muted-foreground border rounded-lg">
+                            Select a dataset above to view detailed comparison.
+                        </div>
+                    )}
+
+                    {/* Aggregate Metrics */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Overall Performance Metrics</CardTitle>
+                            <CardDescription>Aggregated statistics across the entire system.</CardDescription>
+                        </CardHeader>
                         <CardContent>
                             <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Condition</TableHead>
                                         <TableHead className="text-right">Sensitivity</TableHead>
+                                        <TableHead className="text-right">Specificity</TableHead>
                                         <TableHead className="text-right">Accuracy</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -621,6 +873,7 @@ export default function AdminPage() {
                                         <TableRow key={m.condition}>
                                             <TableCell className="font-medium">{m.condition}</TableCell>
                                             <TableCell className="text-right">{(m.sensitivity * 100).toFixed(1)}%</TableCell>
+                                            <TableCell className="text-right">{(m.specificity * 100).toFixed(1)}%</TableCell>
                                             <TableCell className="text-right">{(m.accuracy * 100).toFixed(1)}%</TableCell>
                                         </TableRow>
                                     ))}

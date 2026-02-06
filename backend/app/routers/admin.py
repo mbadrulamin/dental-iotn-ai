@@ -8,7 +8,7 @@ from typing import Annotated, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from sqlalchemy import delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -177,6 +177,75 @@ async def upload_images(
         "uploaded": len(uploaded),
         "errors": errors,
         "uploaded_files": uploaded,
+    }
+
+
+@router.post("/datasets/{dataset_id}/process")
+async def run_inference_on_dataset(
+    dataset_id: UUID,
+    current_user: Annotated[User, Depends(require_role(UserRole.ADMIN))],
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Run AI models on all unprocessed images in a dataset.
+    This is necessary before viewing Analytics.
+    """
+    from app.services.model_service import ModelService
+    from app.models.inference import AIInference, ModelType, PredictionClass
+    
+    model_service = ModelService()
+    
+    # Find all unprocessed images in this dataset
+    result = await db.execute(
+        select(Image).where(
+            and_(
+                Image.dataset_id == dataset_id,
+                Image.is_processed == False
+            )
+        )
+    )
+    images = result.scalars().all()
+    
+    if not images:
+        return {"message": "No new images to process.", "processed_count": 0}
+    
+    processed_count = 0
+    
+    for image in images:
+        try:
+            # 1. Run all classifications
+            file_path = image.file_path
+            if os.path.exists(file_path):
+                results = await model_service.run_all_classifications(file_path)
+                
+                # 2. Save results to DB
+                for model_name, result in results.items():
+                    if result.get("predicted_class"):
+                        inference = AIInference(
+                            image_id=image.id,
+                            model_name=ModelType(model_name),
+                            predicted_class=result.get("predicted_class"),
+                            confidence_score=result.get("confidence", 0.0),
+                            inference_time_ms=result.get("inference_time_ms", 0),
+                        )
+                        db.add(inference)
+                
+                # 3. Mark as processed
+                image.is_processed = True
+                processed_count += 1
+            else:
+                print(f"File not found: {file_path}")
+                
+        except Exception as e:
+            print(f"Error processing image {image.id}: {e}")
+            # Continue processing other images even if one fails
+            continue
+            
+    await db.commit()
+    
+    return {
+        "message": f"Successfully processed {processed_count} images with AI models.",
+        "processed_count": processed_count
     }
 
 

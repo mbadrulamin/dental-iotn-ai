@@ -340,3 +340,73 @@ async def export_metrics_csv(
             "Content-Disposition": f"attachment; filename=performance_metrics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         },
     )
+
+
+@router.get("/dataset-comparison/{dataset_id}")
+async def get_dataset_comparison(
+    dataset_id: UUID,
+    current_user: Annotated[User, Depends(require_role(UserRole.ADMIN))],
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get a detailed comparison of AI vs Expert for every image in a dataset.
+    Useful for detailed analysis and debugging.
+    """
+    from app.models.image import Image
+    from app.models.inference import AIInference, ModelType
+    from app.models.assessment import ExpertAssessment
+    
+    # Fetch all images in dataset
+    images_result = await db.execute(
+        select(Image).where(Image.dataset_id == dataset_id)
+    )
+    images = images_result.scalars().all()
+    
+    data = []
+    
+    for image in images:
+        # Get AI Inferences for this image
+        ai_result = await db.execute(
+            select(AIInference).where(AIInference.image_id == image.id)
+        )
+        ais = ai_result.scalars().all()
+        
+        # Get Expert Assessment for this image (assuming 1:1 for simplicity in this report)
+        exp_result = await db.execute(
+            select(ExpertAssessment).where(ExpertAssessment.image_id == image.id)
+        )
+        expert = exp_result.scalar_one_or_none()
+        
+        # Format AI results into a dict { overjet: present/absent, ... }
+        ai_map = {inf.model_name.value: inf.predicted_class.value for inf in ais}
+        
+        # Format Expert results
+        exp_map = {}
+        if expert:
+            exp_map = {
+                "crossbite": expert.crossbite_present.value,
+                "overbite": expert.overbite_present.value,
+                "openbite": expert.openbite_present.value,
+                "displacement": expert.displacement_present.value,
+                "overjet": expert.overjet_present.value,
+            }
+        
+        # Calculate simple agreement for display
+        # (We check if AI and Expert agree on Overjet)
+        agreement = "No Expert Review"
+        if expert:
+            ai_overjet = ai_map.get("overjet")
+            exp_overjet = exp_map.get("overjet")
+            if ai_overjet and exp_overjet:
+                agreement = "Match" if ai_overjet == exp_overjet else "Mismatch"
+
+        data.append({
+            "image_id": str(image.id),
+            "filename": image.original_filename,
+            "image_url": f"/uploads/images/{image.filename}",
+            "ai_results": ai_map,
+            "expert_results": exp_map,
+            "agreement": agreement
+        })
+        
+    return data
