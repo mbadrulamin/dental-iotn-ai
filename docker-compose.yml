@@ -20,6 +20,19 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      # --------------- DATABASE ADMIN TOOL ---------------
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: dental-iotn-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@email.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
 
   # FastAPI Backend with GPU
   backend:
@@ -65,3 +78,4 @@ services:
 
 volumes:
   postgres_data:
+  pgadmin_data:
