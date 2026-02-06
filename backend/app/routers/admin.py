@@ -4,7 +4,7 @@ Admin router for dataset management.
 
 import os
 import uuid
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
@@ -27,7 +27,7 @@ settings = get_settings()
 class DatasetCreate(BaseModel):
     """Schema for creating a dataset."""
     name: str
-    description: str = None
+    description: Optional[str] = None
     is_validation_set: bool = True
 
 
@@ -35,7 +35,7 @@ class DatasetResponse(BaseModel):
     """Schema for dataset response."""
     id: UUID
     name: str
-    description: str = None
+    description: Optional[str] = None
     is_validation_set: bool
     image_count: int = 0
     

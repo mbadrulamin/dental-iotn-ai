@@ -4,6 +4,7 @@ Dataset model for organizing validation image sets.
 
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import String, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
@@ -26,7 +27,7 @@ class Dataset(Base):
         String(255),
         nullable=False,
     )
-    description: Mapped[str] = mapped_column(
+    description: Mapped[Optional[str]] = mapped_column(
         Text,
         nullable=True,
     )
