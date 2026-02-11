@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import {
     Menu,
@@ -37,10 +37,12 @@ export function Navbar() {
     const [isOpen, setIsOpen] = useState(false)
     const pathname = usePathname()
     const { setTheme, theme } = useTheme()
+    const router = useRouter()
 
     const handleLogout = () => {
         logout()
         setIsOpen(false)
+        router.push("/login")
     }
 
     return (
