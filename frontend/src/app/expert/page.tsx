@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
     CheckCircle2,
     Circle,
@@ -16,7 +17,6 @@ import {
     ChevronRight,
     Loader2,
     Activity,
-    LogOut,
     ArrowLeft,
     Send,
     ImageIcon,
@@ -85,7 +85,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 // ─── Component ───────────────────────────────────────────────────
 export default function ExpertPage() {
     const router = useRouter()
-    const { user, isAuthenticated, checkAuth, logout } = useAuthStore()
+    const { user, isAuthenticated, checkAuth } = useAuthStore()
 
     // ─── State ───────────────────────────────────────────────────
     const [loading, setLoading] = useState(true)
@@ -160,7 +160,6 @@ export default function ExpertPage() {
             const completed: DatasetTask[] = []
 
             for (const task of tasks) {
-                // Determine completion based on actual progress
                 if (task.totalImages > 0 && task.reviewedImages === task.totalImages) {
                     completed.push(task)
                 } else {
@@ -199,8 +198,6 @@ export default function ExpertPage() {
     }
 
     const goBackToList = async () => {
-        // Check if user is trying to leave a fully completed task without "submitting"
-        // (Note: technically saved, but we want the UX of a formal submission)
         if (currentTask && !readOnlyMode) {
             const reviewedCount = currentTask.images.filter((i) => i.is_reviewed).length
             const isAllDone = reviewedCount === currentTask.totalImages
@@ -217,11 +214,10 @@ export default function ExpertPage() {
                 })
 
                 if (result.isConfirmed) {
-                    // Move to completed list locally
                     setCompletedTasks((prev) => [...prev, currentTask])
                     setActiveTasks((prev) => prev.filter((t) => t.id !== currentTask.id))
                 } else {
-                    return // Don't go back
+                    return
                 }
             }
         }
@@ -286,7 +282,6 @@ export default function ExpertPage() {
                 ...assessment,
             })
 
-            // Optimistic update
             const updatedImages = currentTask.images.map((img, idx) =>
                 idx === currentImageIndex
                     ? { ...img, is_reviewed: true, assessment: { ...assessment } }
@@ -300,13 +295,10 @@ export default function ExpertPage() {
             }
 
             setCurrentTask(updatedTask)
-
-            // Update active tasks list
             setActiveTasks((prev) =>
                 prev.map((t) => (t.id === currentTask.id ? updatedTask : t))
             )
 
-            // Auto-advance to next unanswered
             const nextPendingIdx = updatedImages.findIndex(
                 (img, idx) => !img.is_reviewed && idx !== currentImageIndex
             )
@@ -315,11 +307,10 @@ export default function ExpertPage() {
                 setCurrentImageIndex(nextPendingIdx)
                 loadAssessmentForImage(updatedImages[nextPendingIdx])
             } else {
-                // All done with this image, check if all done total
                 if (updatedTask.reviewedImages === updatedTask.totalImages) {
                     await Swal.fire({
                         title: "All Images Reviewed!",
-                        text: "You can now submit this task using the button in the top right.",
+                        text: "You can now submit this task.",
                         icon: "success",
                         confirmButtonColor: "#10b981",
                     })
@@ -342,7 +333,7 @@ export default function ExpertPage() {
             const remaining = currentTask.totalImages - reviewedCount
             Swal.fire({
                 title: "Incomplete Task",
-                html: `You still have <strong>${remaining}</strong> unanswered image(s). Please review all images before submitting.`,
+                html: `You still have <strong>${remaining}</strong> unanswered image(s).`,
                 icon: "warning",
                 confirmButtonColor: "#f59e0b",
             })
@@ -351,7 +342,7 @@ export default function ExpertPage() {
 
         const result = await Swal.fire({
             title: "Final Submission?",
-            text: "Once submitted, all answers will be finalized and you will not be able to change them.",
+            text: "Once submitted, all answers will be finalized and cannot be changed.",
             icon: "warning",
             showCancelButton: true,
             confirmButtonColor: "#10b981",
@@ -419,241 +410,191 @@ export default function ExpertPage() {
     // ═══════════════════════════════════════════════════════════════
     if (viewMode === "review" && currentTask) {
         return (
-            <div className="h-screen flex flex-col bg-background overflow-hidden">
-                {/* ─── Top Bar ─────────────────────────────────── */}
-                <header className="flex-shrink-0 bg-card border-b px-4 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+            <div className="h-[calc(100vh-64px)] flex bg-muted/30 overflow-hidden">
+
+                {/* ─── Left Sidebar: Thumbnail List ─────────────── */}
+                <div className="w-24 md:w-32 lg:w-40 border-r bg-card flex flex-col">
+                    <div className="p-2 border-b">
                         <Button
                             variant="ghost"
                             size="sm"
                             onClick={goBackToList}
-                            className="text-muted-foreground hover:text-foreground"
+                            className="w-full text-xs"
                         >
-                            <ArrowLeft className="h-4 w-4 mr-1" />
+                            <ArrowLeft className="h-3 w-3 mr-1" />
                             Back
                         </Button>
-                        <div className="h-6 w-px bg-border" />
-                        <div>
-                            <h1 className="font-semibold text-foreground text-sm leading-tight">
-                                {currentTask.name}
-                            </h1>
-                            <p className="text-xs text-muted-foreground">
-                                Image {currentImageIndex + 1} of {totalCount}
-                            </p>
-                        </div>
                     </div>
 
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-3 bg-muted rounded-lg px-4 py-2">
-                            <div className="text-right">
-                                <p className="text-xs font-medium text-muted-foreground">Progress</p>
-                                <p className="text-sm font-bold text-foreground">
-                                    {reviewedCount}/{totalCount}
-                                </p>
-                            </div>
-                            <div className="w-24">
-                                <Progress value={reviewedCount} max={totalCount} className="h-2" />
-                            </div>
+                    <ScrollArea className="flex-1">
+                        <div className="p-2 space-y-2">
+                            {currentTask.images.map((img, idx) => (
+                                <button
+                                    key={img.id}
+                                    onClick={() => selectImageByIndex(idx)}
+                                    className={`
+                                        relative w-full aspect-square rounded-md overflow-hidden border-2 transition-all
+                                        ${idx === currentImageIndex
+                                            ? "border-primary ring-2 ring-primary shadow-md"
+                                            : img.is_reviewed
+                                                ? "border-emerald-400 hover:border-emerald-500"
+                                                : "border-transparent hover:border-muted-foreground/30"
+                                        }
+                                    `}
+                                >
+                                    <img
+                                        src={`${API_URL}${img.image_url}`}
+                                        alt={`Thumb ${idx + 1}`}
+                                        className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] text-center py-0.5">
+                                        {idx + 1}
+                                    </div>
+                                    {img.is_reviewed && (
+                                        <div className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center">
+                                            <CheckCircle2 className="h-2.5 w-2.5 text-white" />
+                                        </div>
+                                    )}
+                                </button>
+                            ))}
                         </div>
+                    </ScrollArea>
+                </div>
 
-                        {!readOnlyMode && (
-                            <Button
-                                onClick={handleSubmitTask}
-                                disabled={!allReviewed}
-                                className="gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-muted disabled:text-muted-foreground"
-                            >
-                                <Send className="h-4 w-4" />
-                                Submit Task
-                            </Button>
-                        )}
+                {/* ─── Center: Image Viewer ─────────────────────── */}
+                <div className="flex-1 flex items-center justify-center p-4 md:p-8 bg-muted/40 relative overflow-hidden">
 
-                        {readOnlyMode && (
-                            <Badge variant="secondary" className="px-3 py-1">
-                                <Eye className="h-3 w-3 mr-1" />
-                                Read Only
-                            </Badge>
-                        )}
-                    </div>
-                </header>
-
-                {/* ─── Main Content ───────────────────────────── */}
-                <div className="flex-1 flex overflow-hidden">
-                    <div className="flex-1 flex flex-col">
-                        <div className="flex-1 relative bg-black/90 dark:bg-black flex items-center justify-center">
-                            {currentImage && (
+                    {/* Image Container with Frame */}
+                    <div className="relative w-full h-full flex items-center justify-center">
+                        {currentImage && (
+                            <div className="relative bg-white rounded-lg shadow-2xl overflow-hidden max-w-full max-h-full border-4 border-white">
                                 <img
                                     src={`${API_URL}${currentImage.image_url}`}
                                     alt={`Dental image ${currentImageIndex + 1}`}
-                                    className="max-w-full max-h-full object-contain p-4"
+                                    className="max-h-[calc(100vh-180px)] w-auto object-contain"
                                 />
-                            )}
 
-                            {currentImageIndex > 0 && (
-                                <button
-                                    onClick={() => navigateImage(-1)}
-                                    className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center transition-all backdrop-blur-sm"
-                                >
-                                    <ChevronLeft className="h-5 w-5" />
-                                </button>
-                            )}
-                            {currentImageIndex < totalCount - 1 && (
-                                <button
-                                    onClick={() => navigateImage(1)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center transition-all backdrop-blur-sm"
-                                >
-                                    <ChevronRight className="h-5 w-5" />
-                                </button>
-                            )}
-
-                            <div className="absolute top-3 left-3">
-                                {currentImage?.is_reviewed ? (
-                                    <Badge className="bg-emerald-500 text-white border-0 backdrop-blur-sm shadow-lg">
-                                        <CheckCircle2 className="h-3 w-3 mr-1" />
-                                        Answered
-                                    </Badge>
-                                ) : (
-                                    <Badge className="bg-amber-500 text-white border-0 backdrop-blur-sm shadow-lg">
-                                        <AlertCircle className="h-3 w-3 mr-1" />
-                                        Not Answered
-                                    </Badge>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="flex-shrink-0 bg-card border-t px-4 py-3">
-                            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                                {currentTask.images.map((img, idx) => (
-                                    <button
-                                        key={img.id}
-                                        onClick={() => selectImageByIndex(idx)}
-                                        className={`
-                                            relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all duration-200
-                                            ${idx === currentImageIndex
-                                                ? "border-primary ring-2 ring-ring scale-105"
-                                                : img.is_reviewed
-                                                    ? "border-emerald-400 dark:border-emerald-600 hover:border-emerald-500"
-                                                    : "border-border hover:border-amber-400"
-                                            }
-                                        `}
-                                    >
-                                        <img
-                                            src={`${API_URL}${img.image_url}`}
-                                            alt={`Thumbnail ${idx + 1}`}
-                                            className="w-full h-full object-cover"
-                                        />
-                                        <div className="absolute top-0.5 right-0.5">
-                                            {img.is_reviewed ? (
-                                                <div className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center shadow-sm">
-                                                    <CheckCircle2 className="h-3 w-3 text-white" />
-                                                </div>
-                                            ) : (
-                                                <div className="w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center shadow-sm">
-                                                    <Circle className="h-2.5 w-2.5 text-white fill-white" />
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[10px] text-center py-0.5">
-                                            {idx + 1}
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-
-                            <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                                <div className="flex items-center gap-1">
-                                    <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                                    Answered
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <div className="w-3 h-3 rounded-full bg-amber-400" />
-                                    Not Answered
+                                {/* Status Badge inside frame */}
+                                <div className="absolute top-3 left-3">
+                                    {currentImage?.is_reviewed ? (
+                                        <Badge className="bg-emerald-500 text-white border-0 shadow">
+                                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                                            Answered
+                                        </Badge>
+                                    ) : (
+                                        <Badge className="bg-amber-500 text-white border-0 shadow">
+                                            <AlertCircle className="h-3 w-3 mr-1" />
+                                            Pending
+                                        </Badge>
+                                    )}
                                 </div>
                             </div>
-                        </div>
+                        )}
+
+                        {/* Floating Navigation Buttons */}
+                        {currentImageIndex > 0 && (
+                            <button
+                                onClick={() => navigateImage(-1)}
+                                className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/20 hover:bg-black/50 text-white flex items-center justify-center transition-all backdrop-blur-sm shadow-lg"
+                            >
+                                <ChevronLeft className="h-6 w-6" />
+                            </button>
+                        )}
+                        {currentImageIndex < totalCount - 1 && (
+                            <button
+                                onClick={() => navigateImage(1)}
+                                className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/20 hover:bg-black/50 text-white flex items-center justify-center transition-all backdrop-blur-sm shadow-lg"
+                            >
+                                <ChevronRight className="h-6 w-6" />
+                            </button>
+                        )}
                     </div>
+                </div>
 
-                    {/* ─── Right: Assessment Panel ─────────────── */}
-                    <div className="w-[380px] flex-shrink-0 bg-card border-l flex flex-col overflow-y-auto">
+                {/* ─── Right: Assessment Panel ─────────────── */}
+                <div className="w-[360px] flex-shrink-0 bg-card border-l flex flex-col h-full overflow-hidden">
+                    <ScrollArea className="flex-1">
                         <div className="p-5 space-y-5">
-                            <div className="flex items-center justify-between">
-                                <h3 className="font-bold text-foreground text-lg">Assessment</h3>
-                                <Badge variant="outline" className="text-xs">
-                                    {currentImageIndex + 1} / {totalCount}
-                                </Badge>
+
+                            {/* Header Info */}
+                            <div>
+                                <h2 className="font-bold text-lg text-foreground leading-tight">
+                                    {currentTask.name}
+                                </h2>
+                                <div className="flex items-center gap-2 mt-2">
+                                    <p className="text-sm text-muted-foreground">
+                                        Image <span className="font-semibold text-foreground">{currentImageIndex + 1}</span> of {totalCount}
+                                    </p>
+                                    <Badge variant="outline" className="ml-auto">
+                                        {reviewedCount}/{totalCount} Done
+                                    </Badge>
+                                </div>
+                                <Progress value={reviewedCount} max={totalCount} className="h-1.5 mt-2" />
                             </div>
 
                             {readOnlyMode && (
                                 <div className="rounded-lg bg-secondary border p-3 text-sm text-secondary-foreground flex items-center gap-2">
                                     <Eye className="h-4 w-4 flex-shrink-0" />
-                                    This task has been submitted. Viewing in read-only mode.
+                                    Read-only mode: Task submitted.
                                 </div>
                             )}
 
-                            <div className="space-y-3">
-                                {ASSESSMENT_KEYS.map((key) => (
-                                    <div
-                                        key={key}
-                                        className="flex items-center justify-between rounded-xl border bg-muted/30 p-3 hover:bg-muted/50 transition-colors"
-                                    >
-                                        <span className="font-medium text-sm text-foreground">
-                                            {CONDITION_LABELS[key]}
-                                        </span>
-                                        <div className="flex gap-1.5">
-                                            {(["yes", "no", "na"] as const).map((val) => (
-                                                <Button
-                                                    key={val}
-                                                    variant={
-                                                        assessment[key] === val
-                                                            ? "default"
-                                                            : "outline"
-                                                    }
-                                                    size="sm"
-                                                    disabled={readOnlyMode}
-                                                    className={`
-                                                        min-w-[52px] text-xs font-semibold transition-all
-                                                        ${val === "yes" && assessment[key] === "yes"
-                                                            ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                                                            : ""
+                            {!readOnlyMode && (
+                                <Button
+                                    onClick={handleSubmitTask}
+                                    disabled={!allReviewed}
+                                    className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-muted"
+                                >
+                                    <Send className="h-4 w-4" />
+                                    Submit Task
+                                </Button>
+                            )}
+
+                            <div className="border-t pt-4">
+                                <h3 className="font-semibold text-foreground mb-3">Assessment</h3>
+                                <div className="space-y-3">
+                                    {ASSESSMENT_KEYS.map((key) => (
+                                        <div
+                                            key={key}
+                                            className="flex items-center justify-between rounded-lg border bg-muted/30 p-2.5"
+                                        >
+                                            <span className="text-sm font-medium text-foreground">
+                                                {CONDITION_LABELS[key]}
+                                            </span>
+                                            <div className="flex gap-1">
+                                                {(["yes", "no", "na"] as const).map((val) => (
+                                                    <Button
+                                                        key={val}
+                                                        variant={assessment[key] === val ? "default" : "outline"}
+                                                        size="sm"
+                                                        disabled={readOnlyMode}
+                                                        className={`
+                                                            min-w-[44px] text-xs font-semibold
+                                                            ${val === "yes" && assessment[key] === "yes" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
+                                                            ${val === "no" && assessment[key] === "no" ? "bg-slate-500 hover:bg-slate-600 text-white" : ""}
+                                                            ${val === "na" && assessment[key] === "na" ? "bg-muted-foreground text-white" : ""}
+                                                        `}
+                                                        onClick={() =>
+                                                            setAssessment((prev) => ({ ...prev, [key]: val }))
                                                         }
-                                                        ${val === "no" && assessment[key] === "no"
-                                                            ? "bg-slate-500 hover:bg-slate-600 text-white"
-                                                            : ""
-                                                        }
-                                                        ${val === "na" && assessment[key] === "na"
-                                                            ? "bg-muted-foreground hover:bg-muted-foreground/80 text-white"
-                                                            : ""
-                                                        }
-                                                        ${readOnlyMode ? "opacity-70" : ""}
-                                                    `}
-                                                    onClick={() =>
-                                                        setAssessment((prev) => ({
-                                                            ...prev,
-                                                            [key]: val,
-                                                        }))
-                                                    }
-                                                >
-                                                    {val.toUpperCase()}
-                                                </Button>
-                                            ))}
+                                                    >
+                                                        {val.toUpperCase()}
+                                                    </Button>
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-foreground">
-                                    Notes (optional)
-                                </label>
+                                <label className="text-sm font-medium text-foreground">Notes</label>
                                 <textarea
-                                    className="flex min-h-[80px] w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-transparent transition-all resize-none disabled:bg-muted disabled:opacity-70"
-                                    placeholder="Additional observations..."
+                                    className="flex min-h-[80px] w-full rounded-lg border bg-background px-3 py-2 text-sm disabled:opacity-70"
                                     value={assessment.notes}
                                     disabled={readOnlyMode}
                                     onChange={(e) =>
-                                        setAssessment((prev) => ({
-                                            ...prev,
-                                            notes: e.target.value,
-                                        }))
+                                        setAssessment((prev) => ({ ...prev, notes: e.target.value }))
                                     }
                                 />
                             </div>
@@ -662,51 +603,19 @@ export default function ExpertPage() {
                                 <Button
                                     onClick={handleSaveAssessment}
                                     disabled={isSubmitting}
-                                    className="w-full gap-2 h-11 text-sm font-semibold rounded-xl transition-all"
-                                    size="lg"
+                                    className="w-full"
+                                    variant={currentImage?.is_reviewed ? "secondary" : "default"}
                                 >
                                     {isSubmitting ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : currentImage?.is_reviewed ? (
-                                        <>
-                                            <CheckCircle2 className="h-4 w-4" />
-                                            Update Assessment
-                                        </>
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
                                     ) : (
-                                        "Save Assessment"
+                                        <CheckCircle2 className="h-4 w-4 mr-2" />
                                     )}
+                                    {currentImage?.is_reviewed ? "Update Assessment" : "Save Assessment"}
                                 </Button>
                             )}
-
-                            {!readOnlyMode && (
-                                <div className="pt-2 border-t">
-                                    <p className="text-xs text-muted-foreground mb-2">Quick Navigation</p>
-                                    <div className="flex gap-2">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="flex-1 text-xs"
-                                            disabled={currentImageIndex === 0}
-                                            onClick={() => navigateImage(-1)}
-                                        >
-                                            <ChevronLeft className="h-3.5 w-3.5 mr-1" />
-                                            Previous
-                                        </Button>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="flex-1 text-xs"
-                                            disabled={currentImageIndex >= totalCount - 1}
-                                            onClick={() => navigateImage(1)}
-                                        >
-                                            Next
-                                            <ChevronRight className="h-3.5 w-3.5 ml-1" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
                         </div>
-                    </div>
+                    </ScrollArea>
                 </div>
             </div>
         )
@@ -716,153 +625,70 @@ export default function ExpertPage() {
     // TASK LIST VIEW
     // ═══════════════════════════════════════════════════════════════
     return (
-        <div className="min-h-screen bg-background">
-            <header className="bg-card border-b sticky top-0 z-50">
-                <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-                            <ClipboardList className="h-5 w-5 text-primary-foreground" />
-                        </div>
-                        <div>
-                            <h1 className="text-lg font-bold text-foreground">Expert Review</h1>
-                            <p className="text-xs text-muted-foreground">
-                                Welcome, {user?.full_name || user?.email}
+        <div className="container py-8">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="mb-8">
+                    <TabsTrigger value="active" className="gap-2">
+                        <ClipboardList className="h-4 w-4" />
+                        Active Tasks
+                        {activeTasks.length > 0 && (
+                            <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
+                                {activeTasks.length}
+                            </Badge>
+                        )}
+                    </TabsTrigger>
+                    <TabsTrigger value="completed" className="gap-2">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Completed
+                        {completedTasks.length > 0 && (
+                            <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
+                                {completedTasks.length}
+                            </Badge>
+                        )}
+                    </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="active">
+                    {activeTasks.length === 0 ? (
+                        <div className="text-center py-20">
+                            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-muted flex items-center justify-center">
+                                <ImageIcon className="h-10 w-10 text-muted-foreground" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-foreground mb-2">
+                                No Active Tasks
+                            </h3>
+                            <p className="text-muted-foreground max-w-md mx-auto">
+                                You don&apos;t have any datasets to review right now.
                             </p>
                         </div>
-                    </div>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                            logout()
-                            router.push("/login")
-                        }}
-                        className="text-muted-foreground hover:text-destructive"
-                    >
-                        <LogOut className="h-4 w-4 mr-2" />
-                        Sign Out
-                    </Button>
-                </div>
-            </header>
+                    ) : (
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            {activeTasks.map((task) => {
+                                const pct = task.totalImages > 0
+                                    ? Math.round((task.reviewedImages / task.totalImages) * 100)
+                                    : 0
+                                const isReady = task.reviewedImages === task.totalImages && task.totalImages > 0
 
-            <main className="max-w-6xl mx-auto px-6 py-8">
-                <Tabs value={activeTab} onValueChange={setActiveTab}>
-                    <TabsList className="mb-8">
-                        <TabsTrigger value="active" className="gap-2">
-                            <ClipboardList className="h-4 w-4" />
-                            Active Tasks
-                            {activeTasks.length > 0 && (
-                                <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
-                                    {activeTasks.length}
-                                </Badge>
-                            )}
-                        </TabsTrigger>
-                        <TabsTrigger value="completed" className="gap-2">
-                            <CheckCircle2 className="h-4 w-4" />
-                            Completed
-                            {completedTasks.length > 0 && (
-                                <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0">
-                                    {completedTasks.length}
-                                </Badge>
-                            )}
-                        </TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="active">
-                        {activeTasks.length === 0 ? (
-                            <div className="text-center py-20">
-                                <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-muted flex items-center justify-center">
-                                    <ImageIcon className="h-10 w-10 text-muted-foreground" />
-                                </div>
-                                <h3 className="text-lg font-semibold text-foreground mb-2">
-                                    No Active Tasks
-                                </h3>
-                                <p className="text-muted-foreground max-w-md mx-auto">
-                                    You don&apos;t have any datasets to review right now.
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                {activeTasks.map((task) => {
-                                    const pct = task.totalImages > 0
-                                        ? Math.round((task.reviewedImages / task.totalImages) * 100)
-                                        : 0
-                                    const isReady = task.reviewedImages === task.totalImages && task.totalImages > 0
-
-                                    return (
-                                        <Card
-                                            key={task.id}
-                                            className={`group cursor-pointer hover:shadow-lg transition-all duration-300 ${isReady
-                                                ? "ring-2 ring-emerald-400 dark:ring-emerald-600"
-                                                : "hover:ring-2 hover:ring-ring"
-                                                }`}
-                                            onClick={() => openTask(task)}
-                                        >
-                                            <CardHeader className="pb-3">
-                                                <div className="flex items-start justify-between">
-                                                    <CardTitle className="text-base font-semibold group-hover:text-primary transition-colors">
-                                                        {task.name}
-                                                    </CardTitle>
-                                                    {isReady ? (
-                                                        <Badge className="bg-emerald-600 text-white border-0 text-xs flex-shrink-0">
-                                                            Ready to Submit
-                                                        </Badge>
-                                                    ) : (
-                                                        <Badge variant="secondary" className="text-xs flex-shrink-0">
-                                                            In Progress
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                            </CardHeader>
-                                            <CardContent>
-                                                <div className="space-y-3">
-                                                    <div className="flex items-center justify-between text-sm">
-                                                        <span className="text-muted-foreground flex items-center gap-1.5">
-                                                            <ImageIcon className="h-3.5 w-3.5" />
-                                                            {task.totalImages} images
-                                                        </span>
-                                                        <span className="font-semibold text-foreground">
-                                                            {task.reviewedImages}/{task.totalImages}
-                                                        </span>
-                                                    </div>
-                                                    <Progress value={task.reviewedImages} max={task.totalImages} className="h-2" />
-                                                    <p className="text-xs text-muted-foreground">{pct}% complete</p>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    )
-                                })}
-                            </div>
-                        )}
-                    </TabsContent>
-
-                    <TabsContent value="completed">
-                        {completedTasks.length === 0 ? (
-                            <div className="text-center py-20">
-                                <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-muted flex items-center justify-center">
-                                    <CheckCircle2 className="h-10 w-10 text-muted-foreground" />
-                                </div>
-                                <h3 className="text-lg font-semibold text-foreground mb-2">
-                                    No Completed Tasks Yet
-                                </h3>
-                            </div>
-                        ) : (
-                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                {completedTasks.map((task) => (
+                                return (
                                     <Card
                                         key={task.id}
-                                        className="group cursor-pointer hover:shadow-lg transition-all duration-300"
-                                        onClick={() => openTask(task, true)}
+                                        className={`group cursor-pointer hover:shadow-lg transition-all duration-300 ${isReady ? "ring-2 ring-emerald-400" : "hover:ring-2 hover:ring-ring"}`}
+                                        onClick={() => openTask(task)}
                                     >
                                         <CardHeader className="pb-3">
                                             <div className="flex items-start justify-between">
                                                 <CardTitle className="text-base font-semibold group-hover:text-primary transition-colors">
                                                     {task.name}
                                                 </CardTitle>
-                                                <Badge className="bg-emerald-600 text-white border-0 text-xs flex-shrink-0">
-                                                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                                                    Submitted
-                                                </Badge>
+                                                {isReady ? (
+                                                    <Badge className="bg-emerald-600 text-white border-0 text-xs">
+                                                        Ready
+                                                    </Badge>
+                                                ) : (
+                                                    <Badge variant="secondary" className="text-xs">
+                                                        In Progress
+                                                    </Badge>
+                                                )}
                                             </div>
                                         </CardHeader>
                                         <CardContent>
@@ -870,23 +696,70 @@ export default function ExpertPage() {
                                                 <div className="flex items-center justify-between text-sm">
                                                     <span className="text-muted-foreground flex items-center gap-1.5">
                                                         <ImageIcon className="h-3.5 w-3.5" />
-                                                        {task.totalImages} images reviewed
+                                                        {task.totalImages} images
                                                     </span>
-                                                    <Eye className="h-4 w-4 text-muted-foreground" />
+                                                    <span className="font-semibold text-foreground">
+                                                        {task.reviewedImages}/{task.totalImages}
+                                                    </span>
                                                 </div>
-                                                <Progress value={100} max={100} className="h-2" />
-                                                <p className="text-xs text-muted-foreground">
-                                                    Click to view your assessments
-                                                </p>
+                                                <Progress value={task.reviewedImages} max={task.totalImages} className="h-2" />
+                                                <p className="text-xs text-muted-foreground">{pct}% complete</p>
                                             </div>
                                         </CardContent>
                                     </Card>
-                                ))}
+                                )
+                            })}
+                        </div>
+                    )}
+                </TabsContent>
+
+                <TabsContent value="completed">
+                    {completedTasks.length === 0 ? (
+                        <div className="text-center py-20">
+                            <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-muted flex items-center justify-center">
+                                <CheckCircle2 className="h-10 w-10 text-muted-foreground" />
                             </div>
-                        )}
-                    </TabsContent>
-                </Tabs>
-            </main>
+                            <h3 className="text-lg font-semibold text-foreground mb-2">
+                                No Completed Tasks Yet
+                            </h3>
+                        </div>
+                    ) : (
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            {completedTasks.map((task) => (
+                                <Card
+                                    key={task.id}
+                                    className="group cursor-pointer hover:shadow-lg transition-all duration-300"
+                                    onClick={() => openTask(task, true)}
+                                >
+                                    <CardHeader className="pb-3">
+                                        <div className="flex items-start justify-between">
+                                            <CardTitle className="text-base font-semibold group-hover:text-primary transition-colors">
+                                                {task.name}
+                                            </CardTitle>
+                                            <Badge className="bg-emerald-600 text-white border-0 text-xs">
+                                                <CheckCircle2 className="h-3 w-3 mr-1" />
+                                                Submitted
+                                            </Badge>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="space-y-3">
+                                            <div className="flex items-center justify-between text-sm">
+                                                <span className="text-muted-foreground flex items-center gap-1.5">
+                                                    <ImageIcon className="h-3.5 w-3.5" />
+                                                    {task.totalImages} images
+                                                </span>
+                                                <Eye className="h-4 w-4 text-muted-foreground" />
+                                            </div>
+                                            <Progress value={100} max={100} className="h-2" />
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    )}
+                </TabsContent>
+            </Tabs>
         </div>
     )
 }
