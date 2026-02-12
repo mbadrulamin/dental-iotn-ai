@@ -45,7 +45,7 @@ class AIInference(Base):
         nullable=False,
         index=True,
     )
-    model_name: Mapped[ModelType] = mapped_column(
+    model_type: Mapped[ModelType] = mapped_column(
         Enum(ModelType),
         nullable=False,
     )

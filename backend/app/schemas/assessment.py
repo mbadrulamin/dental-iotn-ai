@@ -50,6 +50,7 @@ class ImageForReview(BaseModel):
     id: UUID
     image_url: str
     image_type: Optional[str]
+    dataset_id: Optional[UUID] = None
     dataset_name: Optional[str]
     
     model_config = {"from_attributes": True}

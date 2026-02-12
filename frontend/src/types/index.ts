@@ -105,6 +105,7 @@ export interface ImageForReview {
     id: string;
     image_url: string;
     image_type: string | null;
+    dataset_id: string | null;
     dataset_name: string | null;
 }
 

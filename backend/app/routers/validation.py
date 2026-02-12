@@ -12,12 +12,55 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.image import Image
-from app.models.dataset import Dataset
+from app.models.dataset import Dataset, dataset_experts
 from app.models.assessment import ExpertAssessment, AssessmentValue
 from app.schemas.assessment import AssessmentCreate, AssessmentResponse, ImageForReview
 from app.routers.auth import get_current_user, require_role
 
 router = APIRouter()
+
+
+@router.get("/my-datasets")
+async def get_my_datasets(
+    current_user: Annotated[User, Depends(require_role(UserRole.EXPERT, UserRole.ADMIN))],
+    db: AsyncSession = Depends(get_db),
+):
+    """Get datasets assigned to the current expert (or all active datasets for admins)."""
+    if current_user.role == UserRole.ADMIN:
+        # Admins see all active datasets
+        query = select(Dataset).where(Dataset.is_active == True)
+    else:
+        # Experts see only datasets assigned to them
+        query = (
+            select(Dataset)
+            .join(dataset_experts, Dataset.id == dataset_experts.c.dataset_id)
+            .where(
+                and_(
+                    dataset_experts.c.expert_id == current_user.id,
+                    Dataset.is_active == True,
+                )
+            )
+        )
+
+    result = await db.execute(query)
+    datasets = result.scalars().all()
+
+    response = []
+    for ds in datasets:
+        # Count images
+        img_result = await db.execute(
+            select(Image).where(Image.dataset_id == ds.id)
+        )
+        image_count = len(img_result.scalars().all())
+
+        response.append({
+            "id": str(ds.id),
+            "name": ds.name,
+            "description": ds.description,
+            "image_count": image_count,
+        })
+
+    return response
 
 
 @router.get("/next", response_model=Optional[ImageForReview])
@@ -100,6 +143,7 @@ async def get_next_image(
         id=image.id,
         image_url=f"/uploads/images/{image.filename}",
         image_type=image.image_type.value if image.image_type else None,
+        dataset_id=image.dataset_id,
         dataset_name=dataset_name,
     )
 
@@ -151,6 +195,7 @@ async def get_review_queue(
             id=image.id,
             image_url=f"/uploads/images/{image.filename}",
             image_type=image.image_type.value if image.image_type else None,
+            dataset_id=image.dataset_id,
             dataset_name=dataset_name,
         ))
     
@@ -158,6 +203,65 @@ async def get_review_queue(
 
 
 @router.post("/assess", response_model=AssessmentResponse)
+async def submit_assessment(
+    assessment_data: AssessmentCreate,
+    current_user: Annotated[User, Depends(require_role(UserRole.EXPERT, UserRole.ADMIN))],
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Submit or update expert assessment for an image.
+    """
+    # Check if image exists
+    result = await db.execute(
+        select(Image).where(Image.id == assessment_data.image_id)
+    )
+    image = result.scalar_one_or_none()
+    
+    if not image:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Image not found",
+        )
+    
+    # Check if already assessed by this expert
+    result = await db.execute(
+        select(ExpertAssessment).where(
+            and_(
+                ExpertAssessment.image_id == assessment_data.image_id,
+                ExpertAssessment.expert_id == current_user.id,
+            )
+        )
+    )
+    existing = result.scalar_one_or_none()
+    
+    if existing:
+        # Update existing assessment
+        existing.crossbite_present = AssessmentValue(assessment_data.crossbite_present)
+        existing.overbite_present = AssessmentValue(assessment_data.overbite_present)
+        existing.openbite_present = AssessmentValue(assessment_data.openbite_present)
+        existing.displacement_present = AssessmentValue(assessment_data.displacement_present)
+        existing.overjet_present = AssessmentValue(assessment_data.overjet_present)
+        existing.notes = assessment_data.notes
+        await db.commit()
+        await db.refresh(existing)
+        return existing
+    else:
+        # Create new assessment
+        assessment = ExpertAssessment(
+            image_id=assessment_data.image_id,
+            expert_id=current_user.id,
+            crossbite_present=AssessmentValue(assessment_data.crossbite_present),
+            overbite_present=AssessmentValue(assessment_data.overbite_present),
+            openbite_present=AssessmentValue(assessment_data.openbite_present),
+            displacement_present=AssessmentValue(assessment_data.displacement_present),
+            overjet_present=AssessmentValue(assessment_data.overjet_present),
+            notes=assessment_data.notes,
+            is_blind_review=True,
+        )
+        db.add(assessment)
+        await db.commit()
+        await db.refresh(assessment)
+        return assessment
 async def submit_assessment(
     assessment_data: AssessmentCreate,
     current_user: Annotated[User, Depends(require_role(UserRole.EXPERT, UserRole.ADMIN))],
@@ -262,3 +366,57 @@ async def get_review_progress(
         "remaining": max(0, total_images - reviewed),
         "progress_percent": round((reviewed / total_images * 100) if total_images > 0 else 0, 1),
     }
+
+
+@router.get("/dataset/{dataset_id}/overview")
+async def get_dataset_overview(
+    dataset_id: UUID, # Non-default argument MUST be first
+    current_user: Annotated[User, Depends(require_role(UserRole.EXPERT, UserRole.ADMIN))],
+    db: AsyncSession = Depends(get_db),
+):
+    if not dataset_id:
+        raise HTTPException(status_code=400, detail="Dataset ID required")
+
+    # Get all images
+    result = await db.execute(
+        select(Image).where(Image.dataset_id == dataset_id).order_by(Image.uploaded_at)
+    )
+    images = result.scalars().all()
+
+    # Get assessments made by this expert for this dataset
+    subquery = (
+        select(ExpertAssessment.image_id)
+        .where(ExpertAssessment.expert_id == current_user.id)
+    )
+    assessments_result = await db.execute(
+        select(ExpertAssessment).where(ExpertAssessment.expert_id == current_user.id)
+    )
+    assessments = {a.image_id: a for a in assessments_result.scalars().all()}
+
+    response_data = []
+    for img in images:
+        img_data = {
+            "id": str(img.id),
+            "filename": img.original_filename,
+            "image_url": f"/uploads/images/{img.filename}",
+            "is_reviewed": img.id in assessments,
+            "dataset_name": None,
+        }
+
+        # If reviewed, include the expert's assessment data
+        if img.id in assessments:
+            ass = assessments[img.id]
+            img_data["assessment"] = {
+                "crossbite_present": ass.crossbite_present.value,
+                "overbite_present": ass.overbite_present.value,
+                "openbite_present": ass.openbite_present.value,
+                "displacement_present": ass.displacement_present.value,
+                "overjet_present": ass.overjet_present.value,
+                "notes": ass.notes,
+            }
+        else:
+            img_data["assessment"] = None
+
+        response_data.append(img_data)
+
+    return response_data

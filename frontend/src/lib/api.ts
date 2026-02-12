@@ -166,6 +166,16 @@ class ApiClient {
         return response.data;
     }
 
+    async getDatasetOverview(datasetId: string): Promise<any[]> {
+        const response = await this.client.get(`/api/validation/dataset/${datasetId}/overview`);
+        return response.data;
+    }
+
+    async getMyDatasets(): Promise<any[]> {
+        const response = await this.client.get('/api/validation/my-datasets');
+        return response.data;
+    }
+
     // Admin endpoints
     async createDataset(name: string, description?: string, expertIds?: string[]): Promise<Dataset> {
         const response = await this.client.post('/api/admin/datasets', {
