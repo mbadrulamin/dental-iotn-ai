@@ -31,7 +31,7 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu121
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu126
 RUN pip install --no-cache-dir ultralytics
 RUN pip install --no-cache-dir -r requirements.txt
 
