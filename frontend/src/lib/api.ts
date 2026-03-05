@@ -21,7 +21,8 @@ import type {
     ReviewProgress,
 } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "" //empty string for automatic relative path (Nginx will catch)
 
 class ApiClient {
     private client: AxiosInstance;

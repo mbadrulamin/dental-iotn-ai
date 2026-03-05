@@ -51,7 +51,8 @@ export default function AdminPage() {
     const [comparisonData, setComparisonData] = useState<any[]>([])
     const [loadingComparison, setLoadingComparison] = useState(false)
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+    // const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "" //empty string for automatic relative path (Nginx will catch)
 
     useEffect(() => {
         checkAuth()
